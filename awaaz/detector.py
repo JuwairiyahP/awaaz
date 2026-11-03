@@ -168,6 +168,9 @@ class XLSRDetector(nn.Module):
 
         self.backbone = Wav2Vec2Model.from_pretrained(backbone)
         self.backbone.config.mask_time_prob = 0.0
+        # LayerDrop skips random layers in train mode, which changes how many
+        # hidden states come back and breaks the learned layer weighting
+        self.backbone.config.layerdrop = 0.0
         for p in self.backbone.parameters():
             p.requires_grad = False
         if unfreeze_top > 0:
@@ -182,6 +185,12 @@ class XLSRDetector(nn.Module):
         self.head = nn.Sequential(nn.Linear(proj * 2, proj), nn.GELU(), nn.Dropout(dropout), nn.Linear(proj, 1))
         self.unfreeze_top = unfreeze_top
         self.last_attention = None
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.unfreeze_top == 0:
+            self.backbone.eval()  # frozen backbone: no dropout, deterministic features
+        return self
 
     def forward(self, wav):
         wav = (wav - wav.mean(dim=1, keepdim=True)) / (wav.std(dim=1, keepdim=True) + 1e-5)

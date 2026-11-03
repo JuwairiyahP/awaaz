@@ -70,3 +70,26 @@ def test_telegram_text_mentions_clone_and_cues():
            "scam": {"phrases": {"money": ["UPI"], "secrecy": ["mat batana"]}, "transcript": "jaldi UPI karo"}}
     t = telegram_text(res)
     assert "🔴" in t and "Bhaiya" in t and "UPI" in t and "not proof" in t
+
+
+def test_xlsr_detector_trains_with_layerdrop_config(monkeypatch):
+    """XLS-R ships with layerdrop>0; in train mode that used to return fewer hidden
+    states than layer weights. Uses a tiny random 24-layer config (no download)."""
+    transformers = pytest.importorskip("transformers")
+    from transformers import Wav2Vec2Config, Wav2Vec2Model
+
+    cfg = Wav2Vec2Config(hidden_size=32, num_hidden_layers=24, num_attention_heads=2, intermediate_size=64,
+                         conv_dim=(16,) * 7, do_stable_layer_norm=True, feat_extract_norm="layer", layerdrop=0.1)
+    monkeypatch.setattr(Wav2Vec2Model, "from_pretrained", classmethod(lambda cls, *a, **k: Wav2Vec2Model(cfg)))
+    from awaaz.detector import XLSRDetector
+
+    m = XLSRDetector()
+    m.train()
+    assert not m.backbone.training
+    opt = torch.optim.Adam(m.trainable_parameters(), 1e-3)
+    for _ in range(3):
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(m(torch.randn(4, 16000)), torch.ones(4))
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+    assert all(p.grad is None for p in m.backbone.parameters())
