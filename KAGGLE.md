@@ -1,5 +1,32 @@
 # Running Awaaz on Kaggle (GPU)
 
+## The one-cell way (recommended)
+
+`scripts/run_all.sh` runs everything below (download, manifests, both models,
+calibration, evaluation grid, shortcut ablation, clone signature, unseen-tool
+ablation, out-of-domain scoring). It skips finished stages and pushes every
+model/result to a private Hugging Face repo, so if Kaggle wipes the session,
+rerunning the cell resumes where it stopped. Keep the cell running in the
+foreground: Kaggle shuts down sessions where no cell is busy.
+
+```python
+import os, subprocess
+from kaggle_secrets import UserSecretsClient
+os.environ["HF_TOKEN"] = UserSecretsClient().get_secret("HF_TOKEN")   # WRITE token
+os.environ["AWAAZ_HUB_REPO"] = "<hf-username>/awaaz-models"
+%cd /kaggle/working
+!rm -rf awaaz && git clone -q https://github.com/<you>/awaaz.git && cd awaaz && pip install -q av speechbrain faster-whisper sentencepiece
+%cd /kaggle/working/awaaz
+p = subprocess.Popen(["bash", "scripts/run_all.sh"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+for line in p.stdout:
+    print(line, end="", flush=True)
+```
+
+The manual steps below are what the script does, for reference.
+
+---
+
+
 Settings: **Accelerator GPU T4 x2 or P100**, **Internet on**. Upload this repo as a
 Kaggle dataset (or `git clone` your GitHub repo), then in a notebook:
 

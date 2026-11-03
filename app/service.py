@@ -39,10 +39,25 @@ def thresholds_from_env() -> Thresholds:
     return th
 
 
+def resolve_ckpt(spec: str | None) -> str | None:
+    """'hub:runs/xlsr/best.pt' downloads that file from AWAAZ_HUB_REPO (private
+    repos need HF_TOKEN); anything else is a local path."""
+    if not spec:
+        return None
+    if spec.startswith("hub:"):
+        from huggingface_hub import hf_hub_download
+
+        repo = os.environ.get("AWAAZ_HUB_REPO")
+        if not repo:
+            raise RuntimeError("AWAAZ_CKPT uses hub: but AWAAZ_HUB_REPO is not set")
+        return hf_hub_download(repo, spec[4:], repo_type="model")
+    return spec
+
+
 @lru_cache(maxsize=1)
 def get_awaaz() -> Awaaz:
     return Awaaz(
-        ckpt=os.environ.get("AWAAZ_CKPT") or None,
+        ckpt=resolve_ckpt(os.environ.get("AWAAZ_CKPT")),
         vault_path=os.environ.get("AWAAZ_VAULT", "data/vault.json"),
         device=os.environ.get("AWAAZ_DEVICE", "cpu"),
         thresholds=thresholds_from_env(),
