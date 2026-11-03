@@ -134,7 +134,12 @@ def main(argv=None):
         os._exit(0)  # streaming readers keep background threads alive; exit without waiting on them
     if not a.out:
         raise SystemExit("--out is required")
+    import os
+    import sys
+
     fetch(a)
+    sys.stdout.flush()
+    os._exit(0)  # same reason as --inspect: don't hang on streaming threads after we're done
 
 
 if __name__ == "__main__":
