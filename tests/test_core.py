@@ -1,5 +1,6 @@
 """Tests for everything that runs without downloaded models."""
 import csv
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -365,3 +366,36 @@ def test_cache_survives_truncated_files(tmp_path):
     again, _ = ds[0]
     assert torch.allclose(good, again, atol=1e-3)
     assert not list(cache.glob(".*.tmp"))
+
+
+def test_make_report_from_partial_results(tmp_path, monkeypatch):
+    """Report builds from whatever results exist, with figures, and skips the rest."""
+    res = tmp_path / "results"
+    (res / "xlsr" / "ablation").mkdir(parents=True)
+    (res / "clone_signature").mkdir()
+    (res / "scam").mkdir()
+    (res / "xlsr" / "summary.json").write_text(json.dumps({"test/clean": 0.2, "test/whatsapp_opus16": 0.5,
+                                                           "test_unseen/clean": 3.1}))
+    with (res / "xlsr" / "grid.csv").open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["split", "lang", "channel", "n", "eer", "auc"])
+        w.writeheader()
+        for lang, split in (("hi", "test"), ("te", "test_unseen")):
+            for ch in ("clean", "whatsapp_opus16"):
+                w.writerow({"split": split, "lang": lang, "channel": ch, "n": 100, "eer": 1.5, "auc": 0.99})
+    (res / "xlsr" / "ablation" / "summary.json").write_text(json.dumps({"test/clean": 0.16, "test/sanitized": 0.29}))
+    (res / "xlsr" / "calibration.json").write_text(json.dumps({"threshold": 0.08, "pooled_eer": 0.0}))
+    (res / "clone_signature" / "summary_clean.json").write_text(json.dumps({
+        "speakers": 20, "clones_accepted_by_speaker_match_pct": 61.0, "detector_catches_among_accepted_clones_pct": 99.0,
+        "red_clone_of_name_on_clones_pct": 60.4, "red_clone_of_name_on_genuine_pct": 0.0}))
+    (res / "scam" / "summary_lexicon.json").write_text(json.dumps({"overall": {"precision": 0.96, "recall": 0.9, "f1": 0.93}}))
+    with (res / "ood_real.csv").open("w", newline="") as f:
+        f.write("file,seconds,xlsr(xlsr)\nMum_hindi.ogg,12.1,0.01\nSam_eng.ogg,9.0,0.4\n")
+    monkeypatch.setenv("AWAAZ_REPORT_ROOT", str(tmp_path))
+    subprocess.run([sys.executable, str(ROOT / "scripts/make_report.py")], check=True, capture_output=True,
+                   env={**__import__("os").environ, "AWAAZ_REPORT_ROOT": str(tmp_path)})
+    md = (res / "REPORT.md").read_text()
+    for needle in ("Detector equal error rate", "XLS-R by language", "Shortcut audit", "Clone signature",
+                   "Scam-script scorer", "Out-of-domain", "1/2 correctly called real"):
+        assert needle in md, needle
+    assert (tmp_path / "docs" / "figures" / "eer_heatmap.png").exists()
+    assert "skipped" not in md

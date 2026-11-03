@@ -146,6 +146,11 @@ if [ -d "$OOD" ] && [ "$(count $OOD)" -gt 0 ]; then
     --out results/ood_real.csv
   push results
 fi
+say "STAGE 5: scam-script eval + report"
+python scripts/eval_scam.py | head -5
+python scripts/make_report.py
+push results docs
+
 say "SUMMARY"
 for f in runs/xlsr/best.pt runs/specresnet/best.pt runs/xlsr_genholdout/best.pt results/xlsr/summary.json \
          results/xlsr/ablation/summary.json results/specresnet/summary.json results/xlsr_genholdout/summary.json \

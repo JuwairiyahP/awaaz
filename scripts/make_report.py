@@ -1,0 +1,271 @@
+"""Turn everything in results/ into README-ready markdown tables and figures.
+
+    python scripts/make_report.py            # writes results/REPORT.md and docs/figures/*.png
+
+Missing results are skipped, so it can run at any point of the pipeline.
+"""
+from __future__ import annotations
+
+import csv
+import json
+import os
+import shutil
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+ROOT = Path(os.environ.get("AWAAZ_REPORT_ROOT", Path(__file__).resolve().parents[1]))
+RES = ROOT / "results"
+FIG = ROOT / "docs" / "figures"
+
+MODELS = [("xlsr", "XLS-R (frozen) + attentive head"), ("specresnet", "Log-mel ResNet (from scratch)")]
+CHANNEL_NAMES = {
+    "clean": "Clean", "whatsapp_opus16": "WhatsApp (Opus 16k)", "phone_8k": "Phone (8 kHz)",
+    "mp3_64": "MP3 64k", "rerecorded": "Speaker re-recorded", "rerecorded_whatsapp": "Re-recorded + WhatsApp",
+    "dither": "Dither (no digital silence)", "lowpass7k": "Low-pass 7 kHz", "sanitized": "Both removed",
+}
+LANG_NAMES = {"hi": "Hindi", "kn": "Kannada", "ta": "Tamil", "bn": "Bengali", "mr": "Marathi",
+              "te": "Telugu", "ml": "Malayalam"}
+
+
+def load_json(p: Path):
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return None
+
+
+def load_grid(p: Path):
+    if not p.exists():
+        return []
+    with p.open() as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        r["eer"] = float(r["eer"])
+    return rows
+
+
+def md_table(header: list[str], rows: list[list]) -> str:
+    out = ["| " + " | ".join(header) + " |", "|" + "|".join("---" for _ in header) + "|"]
+    out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
+    return "\n".join(out)
+
+
+def pct(v) -> str:
+    return "–" if v is None else f"{v:.2f}%"
+
+
+# ------------------------------------------------------------------ sections
+def section_headline(lines):
+    chans = ["clean", "whatsapp_opus16", "phone_8k", "mp3_64", "rerecorded", "rerecorded_whatsapp"]
+    rows = []
+    for key, label in MODELS:
+        s = load_json(RES / key / "summary.json")
+        if not s:
+            continue
+        rows.append([f"**{label}** · seen languages, unseen speakers"] + [pct(s.get(f"test/{c}")) for c in chans])
+        if any(k.startswith("test_unseen/") for k in s):
+            rows.append([f"{label} · unseen languages (Telugu, Malayalam)"] + [pct(s.get(f"test_unseen/{c}")) for c in chans])
+    if rows:
+        lines += ["### Detector equal error rate (lower is better)", "",
+                  md_table(["Model · test set"] + [CHANNEL_NAMES[c] for c in chans], rows), "",
+                  "Test speakers were never heard in training, as themselves or as clones. "
+                  "Channels are applied to the test clips to simulate how scam audio actually arrives.", ""]
+
+
+def section_per_language(lines):
+    grid = load_grid(RES / "xlsr" / "grid.csv")
+    if not grid:
+        return
+    chans = [c for c in ["clean", "whatsapp_opus16", "phone_8k", "rerecorded_whatsapp"] if any(r["channel"] == c for r in grid)]
+    cell = {(r["split"], r["lang"], r["channel"]): r["eer"] for r in grid}
+    keys = sorted({(r["split"], r["lang"]) for r in grid if r["split"] in ("test", "test_unseen")},
+                  key=lambda k: (k[0] != "test", k[1]))
+    rows = [[LANG_NAMES.get(l, l) + (" *(unseen)*" if s == "test_unseen" else "")] +
+            [pct(cell.get((s, l, c))) for c in chans] for s, l in keys]
+    lines += ["### XLS-R by language", "", md_table(["Language"] + [CHANNEL_NAMES[c] for c in chans], rows), ""]
+    heatmap(grid, FIG / "eer_heatmap.png")
+    if (FIG / "eer_heatmap.png").exists():
+        lines += ["![EER by language and channel](docs/figures/eer_heatmap.png)", ""]
+
+
+def heatmap(grid, path: Path):
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
+    except ImportError:
+        return
+    chans = [c for c in CHANNEL_NAMES if any(r["channel"] == c for r in grid) and c not in ("dither", "lowpass7k", "sanitized")]
+    keys = sorted({(r["split"], r["lang"]) for r in grid if r["split"] in ("test", "test_unseen")},
+                  key=lambda k: (k[0] != "test", k[1]))
+    if not chans or not keys:
+        return
+    cell = {(r["split"], r["lang"], r["channel"]): r["eer"] for r in grid}
+    m = np.array([[cell.get((s, l, c), np.nan) for c in chans] for s, l in keys])
+    short = {"clean": "Clean", "whatsapp_opus16": "WhatsApp\nOpus 16k", "phone_8k": "Phone\n8 kHz",
+             "mp3_64": "MP3\n64k", "rerecorded": "Speaker\nre-recorded", "rerecorded_whatsapp": "Re-recorded\n+ WhatsApp"}
+    fig, ax = plt.subplots(figsize=(1.15 * len(chans) + 2.6, 0.42 * len(keys) + 1.5))
+    im = ax.imshow(m, cmap="Oranges", vmin=0, vmax=max(10.0, float(np.nanmax(m))), aspect="auto")
+    ax.set_xticks(range(len(chans)), [short.get(c, c) for c in chans], fontsize=8)
+    ax.xaxis.tick_top()
+    ax.set_yticks(range(len(keys)), [LANG_NAMES.get(l, l) + (" (unseen)" if s == "test_unseen" else "") for s, l in keys], fontsize=9)
+    ax.tick_params(length=0)
+    n_seen = sum(1 for s, _ in keys if s == "test")
+    if 0 < n_seen < len(keys):
+        ax.axhline(n_seen - 0.5, color="black", lw=1.5)
+    for i in range(m.shape[0]):
+        for j in range(m.shape[1]):
+            if not np.isnan(m[i, j]):
+                ax.text(j, i, f"{m[i, j]:.1f}", ha="center", va="center", fontsize=8.5,
+                        color="white" if m[i, j] > 0.6 * im.get_clim()[1] else "black")
+    for side in ax.spines.values():
+        side.set_visible(False)
+    ax.set_title("XLS-R detector EER (%) by language and channel (lower is better)", fontsize=10, pad=34)
+    fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02, label="EER %")
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=160)
+
+
+def section_unseen_tool(lines):
+    s = load_json(RES / "xlsr_genholdout" / "summary.json")
+    if not s:
+        return
+    rows = []
+    for c in ["clean", "whatsapp_opus16"]:
+        rows.append([CHANNEL_NAMES[c], pct(s.get(f"test/{c}")), pct(s.get(f"test_unseen_gen/{c}"))])
+    lines += ["### Unseen cloning tool", "",
+              "XLS-R retrained **without any XTTS-v2 clips**, then tested on XTTS-v2 clones "
+              "(real scammers will use tools we never trained on).", "",
+              md_table(["Channel", "Seen tool (FreeVC24)", "Unseen tool (XTTS-v2)"], rows), ""]
+
+
+def section_ablation(lines):
+    s = load_json(RES / "xlsr" / "ablation" / "summary.json")
+    if not s:
+        return
+    order = ["clean", "dither", "lowpass7k", "sanitized"]
+    rows = [[CHANNEL_NAMES[c], pct(s.get(f"test/{c}"))] for c in order if f"test/{c}" in s]
+    lines += ["### Shortcut audit", "",
+              "Real (Kathbath) and fake (IndicSynth) clips differ in two ways unrelated to the voice: real files "
+              "contain ~18× more padded digital silence, and fakes resampled from 24 kHz have slightly less 7–8 kHz "
+              "energy. Removing each artifact barely moves the EER, so the detector is not relying on them. "
+              "Codec, bandwidth, duration, loudness and noise floor were also audited "
+              "(`scripts/audit_shortcuts.py`); loudness is neutralised by normalisation.", "",
+              md_table(["Test clips", "XLS-R EER"], rows), ""]
+
+
+def section_clone_signature(lines):
+    rows, imgs = [], []
+    for ch in ["clean", "whatsapp_opus16"]:
+        s = load_json(RES / "clone_signature" / f"summary_{ch}.json")
+        if not s:
+            continue
+        rows.append([CHANNEL_NAMES[ch], s.get("speakers"),
+                     f"{s.get('clones_accepted_by_speaker_match_pct')}%",
+                     f"{s.get('detector_catches_among_accepted_clones_pct')}%",
+                     f"{s.get('red_clone_of_name_on_clones_pct')}%",
+                     f"{s.get('red_clone_of_name_on_genuine_pct')}%"])
+        png = RES / "clone_signature" / f"similarity_{ch}.png"
+        if png.exists():
+            FIG.mkdir(parents=True, exist_ok=True)
+            shutil.copy(png, FIG / f"clone_similarity_{ch}.png")
+            imgs.append(f"![Speaker similarity, {CHANNEL_NAMES[ch]}](docs/figures/clone_similarity_{ch}.png)")
+    if rows:
+        lines += ["### Clone signature: matches a known voice *and* sounds synthetic", "",
+                  md_table(["Channel", "Speakers", "Clones that fool speaker matching",
+                            "…of those, caught by the detector", "Red “cloned voice of <name>” on clones",
+                            "Red on the real person (false accusation)"], rows), "",
+                  "Each test speaker is enrolled from 2 real clips; trials are other real clips of the same "
+                  "person, IndicSynth clones of that person, and real clips of other people.", ""] + imgs + [""]
+
+
+def section_scam(lines):
+    rows = []
+    for mode, label in [("lexicon", "Lexicon (shipped)"), ("lexicon+nli", "Lexicon + zero-shot NLI")]:
+        s = load_json(RES / "scam" / f"summary_{mode}.json")
+        if s:
+            o = s["overall"]
+            rows.append([label, f"{o['precision']:.2f}", f"{o['recall']:.2f}", f"{o['f1']:.2f}"])
+    if rows:
+        lines += ["### Scam-script scorer (60 labelled messages, Hindi / Hinglish / English)", "",
+                  md_table(["Mode", "Precision", "Recall", "F1"], rows), "",
+                  "Half the set is deliberately tricky everyday messages (money, hospitals, police, secrets, OTP "
+                  "warnings). Zero-shot NLI over-fired on them, so the lexicon ships by default. "
+                  "The set is small and self-written: a sanity check, not a benchmark.", ""]
+
+
+def section_ood(lines):
+    p = RES / "ood_real.csv"
+    if not p.exists():
+        return
+    with p.open() as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        return
+    models = [k for k in rows[0] if k not in ("file", "seconds")]
+    th = {}
+    for k, _ in MODELS:
+        c = load_json(RES / k / "calibration.json")
+        if c:
+            th[k] = c.get("threshold")
+
+    def thr(col):
+        for k in th:
+            if col.startswith(k) and "(" in col and col.split("(")[1].rstrip(")") == k:
+                return th[k]
+        for k in th:
+            if col.startswith(k):
+                return th[k]
+        return 0.5
+
+    table = []
+    for r in rows:
+        cells = [r["file"].rsplit(".", 1)[0], r["seconds"]]
+        for m in models:
+            v = float(r[m])
+            cells.append(f"{v:.3f} {'⚠️ fake' if v >= thr(m) else '✅ real'}")
+        table.append(cells)
+    summary = []
+    for m in models:
+        n_ok = sum(float(r[m]) < thr(m) for r in rows)
+        summary.append(f"{m}: {n_ok}/{len(rows)} correctly called real")
+    lines += ["### Out-of-domain check: real WhatsApp voice notes from outside both datasets", "",
+              md_table(["Clip", "Seconds"] + models, table), "",
+              "; ".join(summary) + ". Recorded on ordinary phones by people not in any training data.", ""]
+
+
+def section_cost(lines):
+    rows = []
+    for key, label in MODELS:
+        lat = load_json(RES / key / "latency.json")
+        cal = load_json(RES / key / "calibration.json")
+        if lat or cal:
+            rows.append([label, f"{lat['cpu_seconds_per_4s_window']} s" if lat else "–",
+                         f"{cal['threshold']:.3f}" if cal else "–", pct(cal.get("pooled_eer")) if cal else "–"])
+    if rows:
+        lines += ["### Cost and calibration", "",
+                  md_table(["Model", "CPU time per 4 s window", "Decision threshold", "Validation clip EER"], rows), ""]
+
+
+def main():
+    lines = ["## Results", "",
+             "_Generated by `scripts/make_report.py` from `results/`. Detector metric: equal error rate (EER), "
+             "the point where the false-alarm rate equals the miss rate._", ""]
+    for section in (section_headline, section_per_language, section_unseen_tool, section_ablation,
+                    section_clone_signature, section_scam, section_ood, section_cost):
+        try:
+            section(lines)
+        except Exception as e:  # one broken result file shouldn't sink the report
+            lines += [f"<!-- {section.__name__} skipped: {type(e).__name__}: {e} -->", ""]
+    out = RES / "REPORT.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(lines))
+    print(f"wrote {out}" + (f" and figures in {FIG}" if FIG.exists() else ""))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
