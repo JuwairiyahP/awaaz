@@ -40,7 +40,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--manifest", default="data/manifest.csv")
-    ap.add_argument("--splits", default="test,test_unseen")
+    ap.add_argument("--splits", default="test,test_unseen,test_unseen_gen")
     ap.add_argument("--chains", default=",".join(EVAL_CHAINS))
     ap.add_argument("--max-per-group", type=int, default=600, help="clips per (split, lang, label)")
     ap.add_argument("--batch", type=int, default=48)

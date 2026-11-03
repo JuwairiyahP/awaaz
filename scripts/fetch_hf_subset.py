@@ -126,8 +126,12 @@ def main(argv=None):
     ap.add_argument("--token", default=None, help="HF token for gated datasets (or set HF_TOKEN)")
     a = ap.parse_args(argv)
     if a.inspect:
+        import os
+        import sys
+
         inspect(a.dataset, a.token)
-        return
+        sys.stdout.flush()
+        os._exit(0)  # streaming readers keep background threads alive; exit without waiting on them
     if not a.out:
         raise SystemExit("--out is required")
     fetch(a)

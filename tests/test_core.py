@@ -206,3 +206,32 @@ def test_build_manifest_splits(tmp_path):
     for r in hi:
         by_spk.setdefault((r["label"], r["speaker"]), set()).add(r["split"])
     assert all(len(s) == 1 for s in by_spk.values())
+
+
+def test_build_manifest_generator_holdout(tmp_path):
+    """fake clips tagged via metadata.csv; xtts_v2 held out -> test_unseen_gen with paired reals."""
+    meta_rows = []
+    for label in ("real", "fake"):
+        for spk in range(12):
+            d = tmp_path / label / f"spk_{spk}"
+            d.mkdir(parents=True)
+            for k in range(4):
+                p = d / f"{k}.wav"
+                save_wav(p, tone(0.5))
+                if label == "fake":
+                    meta_rows.append({"file": str(p), "Generative Model": "xtts_v2" if k % 2 else "freevc24"})
+    with (tmp_path / "fake" / "metadata.csv").open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["file", "Generative Model"])
+        w.writeheader()
+        w.writerows(meta_rows)
+    out = tmp_path / "m.csv"
+    subprocess.run([sys.executable, str(ROOT / "scripts/build_manifest.py"),
+                    "--source", f"real:hi:{tmp_path / 'real'}", "--source", f"fake:hi:{tmp_path / 'fake'}",
+                    "--holdout-generator", "xtts_v2", "--out", str(out)], check=True, capture_output=True)
+    rows = list(csv.DictReader(out.open()))
+    xtts = [r for r in rows if r["generator"] == "xtts_v2"]
+    assert xtts and all(r["split"] == "test_unseen_gen" for r in xtts)
+    assert not any(r["generator"] == "xtts_v2" for r in rows if r["split"] in ("train", "val", "test"))
+    gen_split = [r for r in rows if r["split"] == "test_unseen_gen"]
+    assert {r["label"] for r in gen_split} == {"real", "fake"}  # EER is defined
+    assert {r["generator"] for r in rows if r["label"] == "real"} == {"real"}

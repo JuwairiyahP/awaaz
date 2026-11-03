@@ -60,7 +60,19 @@ def parse_source(s: str) -> tuple[str, str, Path]:
     return label, lang, p
 
 
-def collect(sources, max_per_group: int, seed: int):
+def read_generators(root: Path, column: str) -> dict[str, str]:
+    """metadata.csv written by fetch_hf_subset.py maps each file to its generator."""
+    meta = root / "metadata.csv"
+    if not meta.exists():
+        return {}
+    with meta.open(newline="") as f:
+        rows = list(csv.DictReader(f))
+    if not rows or column not in rows[0]:
+        return {}
+    return {str(Path(r["file"]).resolve()): r[column] for r in rows if r.get("file")}
+
+
+def collect(sources, max_per_group: int, seed: int, generator_column: str):
     rng = random.Random(seed)
     rows = []
     for label, lang, root in sources:
@@ -68,14 +80,36 @@ def collect(sources, max_per_group: int, seed: int):
         rng.shuffle(files)
         if max_per_group:
             files = files[:max_per_group]
+        gens = read_generators(root, generator_column) if label == "fake" else {}
         for f in files:
             spk = guess_speaker(f, root)
+            gen = "real" if label == "real" else gens.get(str(f.resolve()), "unknown")
             rows.append({
                 "path": str(f), "label": label, "y": 1 if label == "fake" else 0,
-                "lang": lang, "speaker": f"{lang}_{spk}" if spk else "",
+                "lang": lang, "speaker": f"{lang}_{spk}" if spk else "", "generator": gen,
             })
-        print(f"  {label:4s} {lang:3s} {len(files):6d} files from {root}")
+        extra = ""
+        if gens:
+            from collections import Counter
+            extra = "  " + ", ".join(f"{g}={n}" for g, n in Counter(r["generator"] for r in rows[-len(files):]).items())
+        print(f"  {label:4s} {lang:3s} {len(files):6d} files from {root}{extra}")
     return rows
+
+
+def hold_out_generators(rows, holdout_gen: set[str]):
+    """Move fakes from held-out cloning tools into `test_unseen_gen`, paired with
+    copies of the real `test` clips of the same languages, so the detector is
+    scored on a tool it never trained on."""
+    if not holdout_gen:
+        return rows
+    langs = set()
+    for r in rows:
+        if r["label"] == "fake" and r["generator"] in holdout_gen and r["split"] != "test_unseen":
+            r["split"] = "test_unseen_gen"
+            langs.add(r["lang"])
+    reals = [dict(r, split="test_unseen_gen") for r in rows
+             if r["label"] == "real" and r["split"] == "test" and r["lang"] in langs]
+    return rows + reals
 
 
 def assign_splits(rows, holdout: set[str], val_frac: float, test_frac: float, seed: int):
@@ -126,21 +160,26 @@ def main(argv=None):
     ap.add_argument("--val-frac", type=float, default=0.1)
     ap.add_argument("--test-frac", type=float, default=0.1)
     ap.add_argument("--seed", type=int, default=13)
+    ap.add_argument("--generator-column", default="Generative Model")
+    ap.add_argument("--holdout-generator", default="",
+                    help="comma-separated cloning tools kept out of training, e.g. xtts_v2")
     ap.add_argument("--out", default="data/manifest.csv")
     a = ap.parse_args(argv)
 
     sources = [parse_source(s) for s in a.source]
     holdout = {h.strip() for h in a.holdout.split(",") if h.strip()}
+    holdout_gen = {h.strip() for h in a.holdout_generator.split(",") if h.strip()}
     print("collecting:")
-    rows = collect(sources, a.max_per_group, a.seed)
+    rows = collect(sources, a.max_per_group, a.seed, a.generator_column)
     if not rows:
         raise SystemExit("no audio files found")
     rows = assign_splits(rows, holdout, a.val_frac, a.test_frac, a.seed)
+    rows = hold_out_generators(rows, holdout_gen)
 
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["path", "label", "y", "lang", "speaker", "split"])
+        w = csv.DictWriter(f, fieldnames=["path", "label", "y", "lang", "speaker", "generator", "split"])
         w.writeheader()
         w.writerows(rows)
     summarize(rows)
