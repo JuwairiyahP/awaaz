@@ -8,7 +8,7 @@ Kaggle or Hugging Face Spaces:
   AWAAZ_VAULT         enrolled-voice store               (default data/vault.json)
   AWAAZ_SPEAKER       1/0 enable speaker match           (default 1)
   AWAAZ_SCAM          1/0 enable scam-script scorer      (default 1)
-  AWAAZ_NLI           1/0 enable zero-shot NLI           (default 1)
+  AWAAZ_NLI           1/0 enable zero-shot NLI           (default 0: over-fires, see results/scam)
   AWAAZ_WHISPER       faster-whisper size                (default small)
   AWAAZ_TH_SYNTH      synthetic threshold override
   AWAAZ_TH_SPEAKER    speaker-similarity threshold override
@@ -48,7 +48,7 @@ def get_awaaz() -> Awaaz:
         thresholds=thresholds_from_env(),
         use_speaker=_flag("AWAAZ_SPEAKER"),
         use_scam=_flag("AWAAZ_SCAM"),
-        use_nli=_flag("AWAAZ_NLI"),
+        use_nli=_flag("AWAAZ_NLI", "0"),
         whisper_size=os.environ.get("AWAAZ_WHISPER", "small"),
     )
 

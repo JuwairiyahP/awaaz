@@ -8,7 +8,7 @@
      `git lfs install; git lfs track "*.pt"; git add .gitattributes`
    - optionally `results/` from the eval runs (shown in the "How well it works" tab)
 3. Space **Settings → Variables**: `AWAAZ_CKPT=models/best.pt`, `AWAAZ_WHISPER=small`
-   (`base` if responses feel slow). Optionally `AWAAZ_NLI=0` to skip the 0.8 GB NLI model.
+   (`base` if responses feel slow). NLI is off by default (it lowered scam-script F1 in our eval).
 4. Push. The first boot downloads XLS-R, Whisper and ECAPA weights (a few minutes).
 
 Only the detector's forward pass runs on the GPU (`@spaces.GPU`, 20 s budget), so each

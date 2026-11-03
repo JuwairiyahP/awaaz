@@ -36,7 +36,7 @@ class Analysis:
 class Awaaz:
     def __init__(self, ckpt: str | None, vault_path: str = "data/vault.json", device: str = "cpu",
                  thresholds: Thresholds | None = None, use_speaker: bool = True, use_scam: bool = True,
-                 use_nli: bool = True, whisper_size: str = "small"):
+                 use_nli: bool = False, whisper_size: str = "small"):
         from .speaker import VoiceVault
 
         self.th = thresholds or Thresholds()
@@ -119,11 +119,11 @@ def main(argv=None):
     ap.add_argument("--ckpt")
     ap.add_argument("--vault", default="data/vault.json")
     ap.add_argument("--enroll", help="enroll this clip under NAME instead of analysing")
-    ap.add_argument("--no-nli", action="store_true")
+    ap.add_argument("--nli", action="store_true", help="add zero-shot NLI (off by default: it lowered F1 0.93 -> 0.83 in eval)")
     ap.add_argument("--no-speaker", action="store_true")
     ap.add_argument("--no-scam", action="store_true")
     a = ap.parse_args(argv)
-    aw = Awaaz(a.ckpt, a.vault, use_nli=not a.no_nli, use_speaker=not a.no_speaker, use_scam=not a.no_scam)
+    aw = Awaaz(a.ckpt, a.vault, use_nli=a.nli, use_speaker=not a.no_speaker, use_scam=not a.no_scam)
     if a.enroll:
         aw.enroll(a.enroll, a.audio)
         print(f"enrolled {a.enroll}")

@@ -13,8 +13,10 @@ Cues (from how Indian voice-clone and "digital arrest" scams are described):
 Two scorers combined:
   1. a phrase lexicon in Devanagari Hindi, romanised Hinglish and English
      (always available, instant, explainable)
-  2. optional multilingual zero-shot NLI on the English translation
-     (catches paraphrases the lexicon misses)
+  2. optional multilingual zero-shot NLI on the English translation.
+     OFF by default: on our 60-message eval set it caught one more scam but
+     raised 10 false alarms on everyday messages (F1 0.93 -> 0.83), because
+     multi-label zero-shot scores nearly every cue high for short texts.
 """
 from __future__ import annotations
 
@@ -114,7 +116,7 @@ def combine(cues: dict[str, float]) -> float:
 class ScamScorer:
     """Lexicon always; Whisper and NLI loaded lazily if available."""
 
-    def __init__(self, use_nli: bool = True, whisper_size: str = "small", device: str = "cpu"):
+    def __init__(self, use_nli: bool = False, whisper_size: str = "small", device: str = "cpu"):
         self.use_nli, self.whisper_size, self.device = use_nli, whisper_size, device
         self._whisper = None
         self._nli = None
