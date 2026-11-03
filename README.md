@@ -38,8 +38,9 @@ _TODO: language × channel EER grid from `results/*/grid.csv`, seen vs unseen la
 ```
 awaaz/        core package: audio, augment (channel simulation), detector, speaker, scam, fusion, pipeline
 scripts/      build_manifest, generate_xtts_fakes, train_detector, eval_grid
-app/          API, Telegram bot, Streamlit dashboard
-tests/        28 tests (pytest)
+app/          FastAPI service, Telegram bot, Streamlit dashboard
+deploy/       Hugging Face Spaces config
+tests/        33 tests (pytest)
 KAGGLE.md     step-by-step GPU training runbook
 ```
 
@@ -59,7 +60,18 @@ python -m awaaz.pipeline mum_real.ogg --ckpt runs/xlsr/best.pt --enroll Mum
 python -m awaaz.pipeline suspicious.ogg --ckpt runs/xlsr/best.pt
 ```
 
-Training: see [KAGGLE.md](KAGGLE.md).
+```bash
+# dashboard
+AWAAZ_CKPT=runs/xlsr/best.pt streamlit run app/streamlit_app.py
+
+# HTTP API (POST /analyze, POST /enroll, GET /vault)
+AWAAZ_CKPT=runs/xlsr/best.pt uvicorn app.api:app --port 8000
+
+# Telegram bot (token from @BotFather)
+TELEGRAM_TOKEN=... AWAAZ_CKPT=runs/xlsr/best.pt python -m app.bot
+```
+
+Training: see [KAGGLE.md](KAGGLE.md). Deployment: see [deploy/hf_space/DEPLOY.md](deploy/hf_space/DEPLOY.md).
 
 ## Limitations and responsible use
 

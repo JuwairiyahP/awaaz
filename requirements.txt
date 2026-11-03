@@ -11,7 +11,8 @@ sentencepiece           # mDeBERTa tokenizer
 fastapi>=0.110
 uvicorn>=0.29
 python-multipart
-streamlit>=1.33
+streamlit>=1.48
 python-telegram-bot>=21.0
 # dev
 pytest>=8
+matplotlib
