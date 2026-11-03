@@ -69,3 +69,19 @@ Each writes `grid.csv` (language × channel EER), `summary.json`, `latency.json`
 
 Download `runs/*/best.pt`, `results/`, and `runs/*/log.json`. A frozen-XLS-R checkpoint is
 small (head only); the backbone re-downloads from Hugging Face at inference.
+
+## 5. Calibrate, then the headline experiments
+
+```bash
+# decision threshold from validation, stored inside the checkpoint (the app reads it)
+!python scripts/calibrate.py --ckpt runs/xlsr/best.pt --out-json results/xlsr/calibration.json
+!python scripts/calibrate.py --ckpt runs/specresnet/best.pt --out-json results/specresnet/calibration.json
+
+# clone signature: do clones fool speaker matching, and does match+synthetic catch them?
+!python scripts/clone_signature.py --ckpt runs/xlsr/best.pt --split test --chain clean
+!python scripts/clone_signature.py --ckpt runs/xlsr/best.pt --split test --chain whatsapp_opus16
+
+# scam-script scorer on the labelled text set
+!python scripts/eval_scam.py
+!python scripts/eval_scam.py --nli
+```

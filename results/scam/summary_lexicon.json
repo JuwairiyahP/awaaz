@@ -1,0 +1,88 @@
+{
+  "mode": "lexicon",
+  "n": 60,
+  "overall": {
+    "accuracy": 0.933,
+    "precision": 0.964,
+    "recall": 0.9,
+    "f1": 0.931,
+    "tp": 27,
+    "fp": 1,
+    "fn": 3,
+    "tn": 29
+  },
+  "per_language": {
+    "en": {
+      "accuracy": 0.88,
+      "precision": 0.9,
+      "recall": 0.818,
+      "f1": 0.857,
+      "tp": 9,
+      "fp": 1,
+      "fn": 2,
+      "tn": 13
+    },
+    "hi": {
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 9,
+      "fp": 0,
+      "fn": 0,
+      "tn": 7
+    },
+    "hinglish": {
+      "accuracy": 0.947,
+      "precision": 1.0,
+      "recall": 0.9,
+      "f1": 0.947,
+      "tp": 9,
+      "fp": 0,
+      "fn": 1,
+      "tn": 9
+    }
+  },
+  "errors": [
+    {
+      "text": "Bhai jaldi 5000 bhej, emergency hai, ghar pe mat batana",
+      "label": 1,
+      "score": 0.2975,
+      "kind": "family_emergency",
+      "cues": {
+        "urgency": 0.85,
+        "secrecy": 0.85
+      }
+    },
+    {
+      "text": "Hey it's your brother, urgent, I need money for the hospital, keep this between us",
+      "label": 1,
+      "score": 0.2975,
+      "kind": "family_emergency",
+      "cues": {
+        "urgency": 0.85,
+        "secrecy": 0.75
+      }
+    },
+    {
+      "text": "Grandma please, I'm in jail and need bail money right now, don't tell mom",
+      "label": 1,
+      "score": 0.2625,
+      "kind": "family_emergency",
+      "cues": {
+        "urgency": 0.75,
+        "secrecy": 0.75,
+        "authority": 0.75
+      }
+    },
+    {
+      "text": "Never share your OTP with anyone, the bank will never ask for it",
+      "label": 0,
+      "score": 0.6,
+      "kind": "otp_normal",
+      "cues": {
+        "otp": 0.75
+      }
+    }
+  ]
+}

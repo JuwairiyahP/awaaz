@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,7 +46,7 @@ class Awaaz:
 
             self.detector = load_detector(ckpt, device)
             meta_th = (self.detector.awaaz_meta or {}).get("threshold")
-            if meta_th:
+            if meta_th is not None and not os.environ.get("AWAAZ_TH_SYNTH"):  # explicit override wins
                 self.th.synthetic = float(meta_th)
         self.vault = VoiceVault(vault_path)
         self.encoder = None
@@ -82,9 +83,9 @@ class Awaaz:
 
             windows, starts = make_windows(x)
             ws = score_windows(self.detector, windows)
-            # top-k mean: robust to one odd window, but a spliced fake segment still shows
-            k = max(1, int(np.ceil(len(ws) / 3)))
-            synthetic = float(np.mean(np.sort(ws)[-k:]))
+            from .inference import aggregate
+
+            synthetic = aggregate(ws)
         else:
             ws, starts, synthetic = np.zeros(0), np.zeros(0), 0.0
         t["detector"] = time.time() - t0

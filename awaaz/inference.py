@@ -19,8 +19,19 @@ def load_detector(ckpt_path: str | Path, device: torch.device | str = "cpu") -> 
     if missing or unexpected:
         raise RuntimeError(f"checkpoint mismatch: missing={missing[:5]} unexpected={unexpected[:5]}")
     model.eval().to(device)
-    model.awaaz_meta = {"name": ckpt["model"], "epoch": ckpt.get("epoch"), "val": ckpt.get("val")}
+    model.awaaz_meta = {"name": ckpt["model"], "epoch": ckpt.get("epoch"), "val": ckpt.get("val"),
+                        "threshold": ckpt.get("threshold"), "calibration": ckpt.get("calibration")}
     return model
+
+
+def aggregate(window_scores: np.ndarray) -> float:
+    """Clip score from window scores: mean of the top third. Robust to one odd
+    window, but a spliced-in fake segment still pulls the score up."""
+    ws = np.asarray(window_scores, dtype=np.float64)
+    if ws.size == 0:
+        return 0.0
+    k = max(1, int(np.ceil(len(ws) / 3)))
+    return float(np.mean(np.sort(ws)[-k:]))
 
 
 @torch.no_grad()

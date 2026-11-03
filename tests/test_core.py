@@ -264,3 +264,73 @@ def test_build_manifest_generator_holdout(tmp_path):
     gen_split = [r for r in rows if r["split"] == "test_unseen_gen"]
     assert {r["label"] for r in gen_split} == {"real", "fake"}  # EER is defined
     assert {r["generator"] for r in rows if r["label"] == "real"} == {"real"}
+
+
+# ------------------------------------------------------------------ clone signature
+def test_clone_signature_trials_and_summary():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from clone_signature import build_trials, summarize
+
+    rows = []
+    for s in range(6):
+        for k in range(6):
+            rows.append({"path": f"r{s}_{k}", "label": "real", "lang": "hi", "speaker": f"hi_{s}", "generator": "real"})
+        for k in range(4):
+            rows.append({"path": f"f{s}_{k}", "label": "fake", "lang": "hi", "speaker": f"hi_{s}",
+                         "generator": "xtts_v2" if k % 2 else "freevc24"})
+    enroll, trials = build_trials(rows)
+    assert len(enroll) == 6 and all(len(v) == 2 for v in enroll.values())
+    kinds = {t["kind"] for t in trials}
+    assert kinds == {"genuine", "clone", "impostor"}
+    # enrollment clips are never reused as trials
+    used = {t["path"] for t in trials if t["kind"] == "genuine"}
+    assert not used & {p for v in enroll.values() for p in v}
+
+    rng = np.random.default_rng(0)
+    for t in trials:  # clones fool the matcher; detector separates them
+        t["sim"] = {"genuine": 0.75, "clone": 0.70, "impostor": 0.10}[t["kind"]] + 0.05 * rng.standard_normal()
+        if t["kind"] != "impostor":
+            t["synth"] = 0.9 if t["kind"] == "clone" else 0.1
+    s = summarize(trials, synth_threshold=0.5)
+    assert s["clones_accepted_by_speaker_match_pct"] > 50
+    assert s["red_clone_of_name_on_clones_pct"] > 50
+    assert s["red_clone_of_name_on_genuine_pct"] == 0.0
+    assert set(s["by_generator"]) == {"freevc24", "xtts_v2"}
+
+
+def test_calibrate_writes_threshold(tmp_path):
+    from awaaz.inference import load_detector
+
+    # toy data: tones = fake, noise = real
+    rows = []
+    for k in range(12):
+        for label, y in (("fake", 1), ("real", 0)):
+            p = tmp_path / f"{label}{k}.wav"
+            t = np.arange(SR * 5) / SR
+            x = tone(5, 300 + 40 * k) if y else (0.2 * np.random.default_rng(k).standard_normal(SR * 5)).astype(np.float32)
+            save_wav(p, x)
+            rows.append({"path": str(p), "label": label, "y": y, "lang": "hi", "speaker": "", "generator": "", "split": "val"})
+    man = tmp_path / "m.csv"
+    with man.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    ck = tmp_path / "m.pt"
+    torch.manual_seed(0)
+    torch.save({"model": "specresnet", "kwargs": {"widths": (8, 16, 16, 32)},
+                "state_dict": SpecResNet(widths=(8, 16, 16, 32)).state_dict()}, ck)
+    subprocess.run([sys.executable, str(ROOT / "scripts/calibrate.py"), "--ckpt", str(ck), "--manifest", str(man),
+                    "--chains", "clean"], check=True, capture_output=True)
+    m = load_detector(ck)
+    assert 0.0 <= m.awaaz_meta["threshold"] <= 1.0
+    assert m.awaaz_meta["calibration"]["n_clips"] == 24
+    assert (tmp_path / "m.pt.bak").exists()
+
+
+def test_scam_eval_runs_and_is_reasonable():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from eval_scam import report, run
+
+    rows = run(ROOT / "eval/scam_texts.csv", use_nli=False)
+    overall, per_lang, _ = report(rows)
+    assert len(rows) == 60 and overall["f1"] >= 0.85
