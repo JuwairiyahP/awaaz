@@ -105,6 +105,34 @@ def test_eval_channel_cache(tmp_path):
     assert torch.allclose(a, b, atol=1e-3)
 
 
+def test_random_rerecord_varies_and_band_limits():
+    from awaaz.augment import random_rerecord
+
+    rng = np.random.default_rng(0)
+    noise = np.random.default_rng(1).standard_normal(4 * SR).astype(np.float32) * 0.1
+    outs = [random_rerecord(noise, rng) for _ in range(4)]
+    assert all(o.shape == noise.shape and np.isfinite(o).all() for o in outs)
+    f = np.fft.rfftfreq(len(noise), 1 / SR)
+    low = [np.sum(np.abs(np.fft.rfft(o))[f < 80] ** 2) / np.sum(np.abs(np.fft.rfft(o)) ** 2) for o in outs]
+    assert max(low) < 0.02  # small-speaker bass loss
+    assert not np.allclose(outs[0], outs[1])  # randomised, not one fixed chain
+
+
+def test_random_channel_uses_rerecord_branch():
+    import awaaz.augment as A
+
+    calls = []
+    orig = A.random_rerecord
+    A.random_rerecord = lambda x, rng: calls.append(1) or orig(x, rng)
+    try:
+        rng = np.random.default_rng(0)
+        for _ in range(40):
+            A.random_channel(tone(1), rng, p_clean=0.0, p_rerecord=0.5)
+    finally:
+        A.random_rerecord = orig
+    assert 8 <= len(calls) <= 32
+
+
 def test_random_channel_shapes():
     rng = np.random.default_rng(0)
     for _ in range(10):

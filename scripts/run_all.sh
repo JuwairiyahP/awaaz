@@ -62,6 +62,8 @@ python scripts/build_manifest.py $SOURCES --holdout te,ml --max-per-group "$N" -
 python scripts/build_manifest.py $SOURCES --holdout te,ml --holdout-generator xtts_v2 --max-per-group "$N" \
   --out data/manifest_genholdout.csv > /dev/null
 
+if [ "${ONLY_DATA:-0}" = "1" ]; then say "ONLY_DATA=1: data and manifests ready, stopping here"; exit 0; fi
+
 # ---------------------------------------------------------------- 3+. per-GPU tracks
 gpu0() {  # main model and the headline experiments
   export CUDA_VISIBLE_DEVICES=0
