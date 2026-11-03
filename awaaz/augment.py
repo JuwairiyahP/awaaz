@@ -172,6 +172,26 @@ def speaker_rerecord(x: np.ndarray, sr: int = SAMPLE_RATE, rng: np.random.Genera
     return add_noise(y, snr_db=20, rng=rng)
 
 
+# ---------------------------------------------------------------- shortcut removal
+def dither(x: np.ndarray, rng: np.random.Generator | None = None, level_db: float = -66.0) -> np.ndarray:
+    """Inaudible noise (about -66 dBFS) so no sample is exactly zero. Real
+    Kathbath files contain padded digital silence and the fakes don't; a model
+    must not be able to use that."""
+    rng = rng or np.random.default_rng(0)
+    return (x + rng.standard_normal(len(x)).astype(np.float32) * 10 ** (level_db / 20)).astype(np.float32)
+
+
+def lowpass(x: np.ndarray, cutoff: float = 7000.0, sr: int = SAMPLE_RATE) -> np.ndarray:
+    """Remove the 7-8 kHz band, where 24 kHz->16 kHz resampled fakes and native
+    16 kHz recordings differ for reasons unrelated to the voice."""
+    sos = signal.butter(8, cutoff, btype="lowpass", fs=sr, output="sos")
+    return signal.sosfiltfilt(sos, x).astype(np.float32)
+
+
+def sanitize(x: np.ndarray, rng: np.random.Generator | None = None) -> np.ndarray:
+    return dither(lowpass(x), rng)
+
+
 # ---------------------------------------------------------------- named chains
 CHAINS = {
     "clean": lambda x, rng: x,
@@ -183,12 +203,21 @@ CHAINS = {
     "rerecorded_whatsapp": lambda x, rng: opus(speaker_rerecord(x, rng=rng), 16),
 }
 
+# shortcut ablations: same clips with a dataset artifact removed. If a model's
+# EER jumps under these, it was using the artifact rather than the voice.
+ABLATION_CHAINS = {
+    "dither": lambda x, rng: dither(x, rng),
+    "lowpass7k": lambda x, rng: lowpass(x),
+    "sanitized": lambda x, rng: sanitize(x, rng),
+}
+
 EVAL_CHAINS = list(CHAINS.keys())
+CHAINS.update(ABLATION_CHAINS)
 
 
 def apply_chain(x: np.ndarray, name: str, seed: int = 0) -> np.ndarray:
     if name not in CHAINS:
-        raise KeyError(f"unknown chain {name!r}; choose from {EVAL_CHAINS}")
+        raise KeyError(f"unknown chain {name!r}; choose from {list(CHAINS)}")
     return CHAINS[name](x, np.random.default_rng(seed)).astype(np.float32)
 
 

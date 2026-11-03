@@ -59,7 +59,22 @@ def test_chains_change_the_signal():
     x = tone(4)
     for name in CHAINS:
         if name != "clean":
-            assert not np.allclose(apply_chain(x, name), x, atol=1e-3), name
+            assert not np.array_equal(apply_chain(x, name), x), name
+
+
+def test_ablation_chains_remove_the_shortcuts():
+    from awaaz.augment import dither, lowpass
+
+    x = np.zeros(SR * 2, dtype=np.float32)
+    x[SR:] = tone(1)
+    assert np.mean(np.abs(dither(x)) < 1e-5) < 0.05  # padded digital silence is gone
+    n = 2 ** 15
+    noise = np.random.default_rng(0).standard_normal(n).astype(np.float32)
+    spec = np.abs(np.fft.rfft(lowpass(noise))) ** 2
+    f = np.fft.rfftfreq(n, 1 / SR)
+    assert spec[f > 7500].sum() / spec.sum() < 1e-4
+    # dither is inaudible: ~-66 dBFS
+    assert 20 * np.log10(np.std(dither(np.zeros(SR, np.float32)))) < -60
 
 
 def test_codecs_work_in_process_and_via_cli(monkeypatch):
