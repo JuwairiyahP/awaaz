@@ -50,15 +50,21 @@ class Match:
 
 
 class VoiceVault:
-    """Enrolled voices, stored as embeddings in a small JSON file."""
+    """Enrolled voices, stored as embeddings in a small JSON file.
 
-    def __init__(self, path: str | Path = "data/vault.json"):
-        self.path = Path(path)
-        self.people: dict[str, list[list[float]]] = {}
-        if self.path.exists():
+    `path=None` keeps the vault in memory only (used by the public web demo,
+    where each visitor's enrolled voices live in their own browser session).
+    """
+
+    def __init__(self, path: str | Path | None = "data/vault.json", people: dict | None = None):
+        self.path = Path(path) if path is not None else None
+        self.people: dict[str, list[list[float]]] = dict(people or {})
+        if self.path is not None and self.path.exists() and people is None:
             self.people = json.loads(self.path.read_text())
 
     def save(self):
+        if self.path is None:
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self.people))
 

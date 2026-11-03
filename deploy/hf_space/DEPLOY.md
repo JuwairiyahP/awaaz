@@ -1,12 +1,16 @@
-# Deploying to Hugging Face Spaces
+# Deploying the demo to Hugging Face Spaces (Gradio + ZeroGPU, free)
 
-1. Create a Space: huggingface.co/new-space, SDK **Streamlit**, hardware **CPU basic** (free).
-2. Copy into the Space repo root:
-   - this folder's `README.md` and `packages.txt`
-   - `awaaz/`, `app/`, `requirements.txt` from the main repo
-   - your checkpoint as `models/best.pt` (track with git lfs: `git lfs track "*.pt"`)
-   - `results/` from the eval runs (for the "How well it works" tab)
-3. In the Space **Settings → Variables**, set:
-   - `AWAAZ_CKPT=models/best.pt`
-   - `AWAAZ_WHISPER=small` (use `base` if the free CPU is too slow)
-4. Push. First boot downloads XLS-R / Whisper / ECAPA, so allow a few minutes.
+1. Create the Space: huggingface.co/new-space → SDK **Gradio** → **Blank** → hardware **ZeroGPU** → Public.
+2. Clone it and copy in, at the Space repo root:
+   - `awaaz/` and `app/` from the main repo
+   - this folder's `README.md`, `requirements.txt` and `packages.txt` (ffmpeg)
+   - the trained checkpoint as `models/best.pt`; it's tracked with Git LFS:
+     `git lfs install; git lfs track "*.pt"; git add .gitattributes`
+   - optionally `results/` from the eval runs (shown in the "How well it works" tab)
+3. Space **Settings → Variables**: `AWAAZ_CKPT=models/best.pt`, `AWAAZ_WHISPER=small`
+   (`base` if responses feel slow). Optionally `AWAAZ_NLI=0` to skip the 0.8 GB NLI model.
+4. Push. The first boot downloads XLS-R, Whisper and ECAPA weights (a few minutes).
+
+Only the detector's forward pass runs on the GPU (`@spaces.GPU`, 20 s budget), so each
+check uses a second or two of the free ZeroGPU quota. Enrolled voices live in the
+visitor's browser session only.

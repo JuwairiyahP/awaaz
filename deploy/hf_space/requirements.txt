@@ -1,0 +1,10 @@
+numpy
+scipy
+soundfile
+av
+torch
+transformers
+speechbrain
+faster-whisper
+sentencepiece
+matplotlib

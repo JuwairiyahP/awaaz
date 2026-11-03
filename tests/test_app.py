@@ -93,3 +93,29 @@ def test_xlsr_detector_trains_with_layerdrop_config(monkeypatch):
         loss.backward()
         opt.step()
     assert all(p.grad is None for p in m.backbone.parameters())
+
+
+def test_gradio_demo_session_vault_and_clone_verdict(client, tmp_path):
+    """Enrolled voices live in the session dict; a synthetic clip matching an
+    enrolled voice gets the red 'cloned voice of <name>' verdict."""
+    pytest.importorskip("gradio")
+    import app.gradio_app as G
+
+    class FakeEncoder:
+        def embed(self, x):
+            v = np.ones(192, dtype=np.float32)
+            return v / np.linalg.norm(v)
+
+    aw = G._aw()
+    aw.encoder, aw.th.synthetic = FakeEncoder(), 0.0  # force "synthetic" with a random detector
+    t = np.arange(16000 * 5) / 16000
+    wav = tmp_path / "v.wav"
+    save_wav(wav, (0.3 * np.sin(2 * np.pi * 220 * t)).astype(np.float32))
+    people, md, _, _ = G.enroll("Bhaiya", str(wav), {})
+    assert "Bhaiya" in md and "Bhaiya" in people
+    v, fig, details, raw = G.analyze(str(wav), people)
+    assert raw["verdict"]["level"] == "red" and "Bhaiya" in raw["verdict"]["headline"]
+    assert not Path(aw.vault.path or "/nonexistent").exists()  # nothing written server-side
+    people, md, _ = G.forget("Bhaiya", people)
+    assert people == {}
+    aw.encoder, aw.th.synthetic = None, 0.5

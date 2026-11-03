@@ -13,6 +13,7 @@ fastapi>=0.110
 uvicorn>=0.29
 python-multipart
 streamlit>=1.48
+gradio>=5
 python-telegram-bot>=21.0
 # dev
 pytest>=8

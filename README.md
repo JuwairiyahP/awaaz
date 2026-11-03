@@ -61,6 +61,9 @@ python -m awaaz.pipeline suspicious.ogg --ckpt runs/xlsr/best.pt
 ```
 
 ```bash
+# web demo (what runs on Hugging Face Spaces)
+python app/gradio_app.py
+
 # dashboard
 AWAAZ_CKPT=runs/xlsr/best.pt streamlit run app/streamlit_app.py
 
