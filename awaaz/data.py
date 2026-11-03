@@ -63,12 +63,23 @@ class ClipDataset(Dataset):
             gain = float(rng.uniform(0.3, 1.0))  # loudness shouldn't be a cue
             x = x * gain
         else:
+            # eval clips are deterministic, so cache them per channel: validation
+            # re-runs every epoch and shouldn't re-encode the same clips each time
+            c = None
+            if self.cache_dir and self.chain != "clean":
+                key = f"{self.rows[i]['path']}|{self.chain}|{self.seed + i}|{self.length}"
+                c = self.cache_dir / f"eval_{hashlib.md5(key.encode()).hexdigest()}.npy"
+                if c.exists():
+                    x = np.load(c).astype(np.float32)
+                    return torch.from_numpy(x), torch.tensor(self.rows[i]["y"], dtype=torch.float32)
             if len(x) >= self.length:
                 s = (len(x) - self.length) // 2
                 x = x[s : s + self.length]
             else:
                 x = random_crop(x, self.length, np.random.default_rng(0))
             x = apply_chain(x, self.chain, seed=self.seed + i)
+            if c is not None:
+                np.save(c, x.astype(np.float16))
         return torch.from_numpy(np.ascontiguousarray(x, dtype=np.float32)), torch.tensor(self.rows[i]["y"], dtype=torch.float32)
 
 

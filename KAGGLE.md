@@ -6,7 +6,7 @@ Kaggle dataset (or `git clone` your GitHub repo), then in a notebook:
 ```bash
 !cp -r /kaggle/input/awaaz-code /kaggle/working/awaaz   # or: git clone <your repo>
 %cd /kaggle/working/awaaz
-!pip install -q speechbrain faster-whisper sentencepiece
+!pip install -q av speechbrain faster-whisper sentencepiece
 !python -m pytest -q tests        # 28 tests, ~15 s — confirms the env is fine
 ```
 

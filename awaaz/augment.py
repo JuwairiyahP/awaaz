@@ -21,8 +21,50 @@ from . import SAMPLE_RATE
 
 
 # ---------------------------------------------------------------- ffmpeg codecs
-def _ffmpeg_roundtrip(x: np.ndarray, encode_args: list[str], fmt: str, sr: int = SAMPLE_RATE) -> np.ndarray:
-    """Encode x with ffmpeg, decode it back to f32 at sr. Keeps the length."""
+try:  # in-process codecs (same ffmpeg libraries, no process launch): 4-8x faster
+    import av as _av
+except ImportError:  # pragma: no cover
+    _av = None
+
+
+def _av_roundtrip(x: np.ndarray, codec: str, kbps: int, fmt: str, sr: int = SAMPLE_RATE,
+                  options: dict | None = None) -> np.ndarray:
+    import io
+
+    buf = io.BytesIO()
+    out = _av.open(buf, "w", format=fmt)
+    st = out.add_stream(codec, rate=sr)
+    st.bit_rate = kbps * 1000
+    st.codec_context.layout = "mono"
+    if options:
+        st.codec_context.options = options
+    st.codec_context.open()
+    fs = st.codec_context.frame_size or 1024
+    rs = _av.AudioResampler(format=st.codec_context.format.name, layout="mono", rate=sr, frame_size=fs)
+    fr = _av.AudioFrame.from_ndarray(np.ascontiguousarray(x[None, :], dtype=np.float32), format="flt", layout="mono")
+    fr.sample_rate = sr
+    for f in rs.resample(fr) + rs.resample(None):
+        for p in st.encode(f):
+            out.mux(p)
+    for p in st.encode(None):
+        out.mux(p)
+    out.close()
+
+    inp = _av.open(io.BytesIO(buf.getvalue()), "r")
+    dr = _av.AudioResampler(format="flt", layout="mono", rate=sr)
+    chunks = []
+    for f in inp.decode(audio=0):
+        chunks += [g.to_ndarray().reshape(-1) for g in dr.resample(f)]
+    chunks += [g.to_ndarray().reshape(-1) for g in dr.resample(None)]
+    inp.close()
+    y = np.concatenate(chunks).astype(np.float32) if chunks else np.zeros(0, np.float32)
+    return _match_length(y, len(x))
+
+
+def _ffmpeg_roundtrip(x: np.ndarray, encode_args: list[str], fmt: str, sr: int = SAMPLE_RATE,
+                      decode_fmt: str | None = None) -> np.ndarray:
+    """Encode x with the ffmpeg CLI, decode it back to f32 at sr. Keeps the length.
+    Fallback when PyAV is unavailable."""
     enc = subprocess.run(
         ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
          "-f", "f32le", "-ar", str(sr), "-ac", "1", "-i", "-",
@@ -33,13 +75,22 @@ def _ffmpeg_roundtrip(x: np.ndarray, encode_args: list[str], fmt: str, sr: int =
         raise RuntimeError(f"encode failed: {enc.stderr.decode(errors='ignore')[:300]}")
     dec = subprocess.run(
         ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-         "-f", fmt, "-i", "-", "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"],
+         "-f", decode_fmt or fmt, "-i", "-", "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"],
         input=enc.stdout, capture_output=True, check=False,
     )
     if dec.returncode != 0:
         raise RuntimeError(f"decode failed: {dec.stderr.decode(errors='ignore')[:300]}")
     y = np.frombuffer(dec.stdout, dtype=np.float32).copy()
     return _match_length(y, len(x))
+
+
+def _codec(x, codec, kbps, fmt, cli_args, decode_fmt=None, options=None):
+    if _av is not None:
+        try:
+            return _av_roundtrip(x, codec, kbps, fmt, options=options)
+        except Exception:
+            pass  # fall through to the CLI
+    return _ffmpeg_roundtrip(x, cli_args, fmt, decode_fmt=decode_fmt)
 
 
 def _match_length(y: np.ndarray, n: int) -> np.ndarray:
@@ -50,16 +101,18 @@ def _match_length(y: np.ndarray, n: int) -> np.ndarray:
 
 def opus(x: np.ndarray, kbps: int = 16) -> np.ndarray:
     """WhatsApp/Telegram voice notes use Opus at low bitrates."""
-    return _ffmpeg_roundtrip(x, ["-c:a", "libopus", "-b:a", f"{kbps}k", "-application", "voip"], "ogg")
+    return _codec(x, "libopus", kbps, "ogg", ["-c:a", "libopus", "-b:a", f"{kbps}k", "-application", "voip"],
+                  options={"application": "voip"})
 
 
 def mp3(x: np.ndarray, kbps: int = 64) -> np.ndarray:
     """Re-shared clips on social media are often MP3/AAC transcoded."""
-    return _ffmpeg_roundtrip(x, ["-c:a", "libmp3lame", "-b:a", f"{kbps}k"], "mp3")
+    return _codec(x, "libmp3lame", kbps, "mp3", ["-c:a", "libmp3lame", "-b:a", f"{kbps}k"])
 
 
 def aac(x: np.ndarray, kbps: int = 48) -> np.ndarray:
-    return _ffmpeg_roundtrip(x, ["-c:a", "aac", "-b:a", f"{kbps}k"], "adts")
+    # the ADTS stream is written with -f adts but must be read back with -f aac
+    return _codec(x, "aac", kbps, "adts", ["-c:a", "aac", "-b:a", f"{kbps}k"], decode_fmt="aac")
 
 
 # ---------------------------------------------------------------- numpy effects

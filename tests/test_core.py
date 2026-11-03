@@ -62,6 +62,33 @@ def test_chains_change_the_signal():
             assert not np.allclose(apply_chain(x, name), x, atol=1e-3), name
 
 
+def test_codecs_work_in_process_and_via_cli(monkeypatch):
+    """Both codec paths must actually encode (a silent failure means no augmentation)."""
+    import awaaz.augment as A
+
+    x = tone(3)
+    for fn in (A.opus, A.mp3, A.aac):
+        y_av = fn(x)
+        assert y_av.shape == x.shape and not np.allclose(y_av, x, atol=1e-3), fn.__name__
+    monkeypatch.setattr(A, "_av", None)  # force the ffmpeg CLI fallback
+    for fn in (A.opus, A.mp3, A.aac):
+        y_cli = fn(x)
+        assert y_cli.shape == x.shape and not np.allclose(y_cli, x, atol=1e-3), fn.__name__
+
+
+def test_eval_channel_cache(tmp_path):
+    from awaaz.data import ClipDataset
+
+    wav = tmp_path / "a.wav"
+    save_wav(wav, tone(5))
+    rows = [{"path": str(wav), "y": 1, "lang": "hi", "label": "fake"}]
+    ds = ClipDataset(rows, train=False, chain="whatsapp_opus16", cache_dir=str(tmp_path / "cache"))
+    a, _ = ds[0]
+    assert len(list((tmp_path / "cache").glob("eval_*.npy"))) == 1
+    b, _ = ds[0]
+    assert torch.allclose(a, b, atol=1e-3)
+
+
 def test_random_channel_shapes():
     rng = np.random.default_rng(0)
     for _ in range(10):
