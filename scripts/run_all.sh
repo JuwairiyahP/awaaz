@@ -150,7 +150,7 @@ if [ -d "$OOD" ] && [ "$(count $OOD)" -gt 0 ]; then
 fi
 say "STAGE 5: scam-script eval + report"
 python scripts/eval_scam.py | head -5
-python scripts/make_report.py
+python scripts/make_report.py --update-readme
 push results docs
 
 say "SUMMARY"

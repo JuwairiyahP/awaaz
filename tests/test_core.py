@@ -429,3 +429,14 @@ def test_make_report_from_partial_results(tmp_path, monkeypatch):
         assert needle in md, needle
     assert (tmp_path / "docs" / "figures" / "eer_heatmap.png").exists()
     assert "skipped" not in md
+
+
+def test_make_report_updates_readme_between_markers(tmp_path):
+    (tmp_path / "results" / "xlsr").mkdir(parents=True)
+    (tmp_path / "results" / "xlsr" / "summary.json").write_text(json.dumps({"test/clean": 0.21}))
+    (tmp_path / "README.md").write_text("intro\n<!-- RESULTS:START -->\nold\n<!-- RESULTS:END -->\noutro\n")
+    subprocess.run([sys.executable, str(ROOT / "scripts/make_report.py"), "--update-readme"], check=True,
+                   capture_output=True, env={**__import__("os").environ, "AWAAZ_REPORT_ROOT": str(tmp_path)})
+    md = (tmp_path / "README.md").read_text()
+    assert md.startswith("intro") and md.rstrip().endswith("outro")
+    assert "0.21%" in md and "old" not in md
