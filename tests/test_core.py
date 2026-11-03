@@ -390,12 +390,14 @@ def test_make_report_from_partial_results(tmp_path, monkeypatch):
     (res / "scam" / "summary_lexicon.json").write_text(json.dumps({"overall": {"precision": 0.96, "recall": 0.9, "f1": 0.93}}))
     with (res / "ood_real.csv").open("w", newline="") as f:
         f.write("file,seconds,xlsr(xlsr)\nMum_hindi.ogg,12.1,0.01\nSam_eng.ogg,9.0,0.4\n")
+    with (res / "ood_clones.csv").open("w", newline="") as f:
+        f.write("file,seconds,xlsr(xlsr)\nxtts_0.wav,4.6,0.988\nxtts_1.wav,4.8,0.945\n")
     monkeypatch.setenv("AWAAZ_REPORT_ROOT", str(tmp_path))
     subprocess.run([sys.executable, str(ROOT / "scripts/make_report.py")], check=True, capture_output=True,
                    env={**__import__("os").environ, "AWAAZ_REPORT_ROOT": str(tmp_path)})
     md = (res / "REPORT.md").read_text()
     for needle in ("Detector equal error rate", "XLS-R by language", "Shortcut audit", "Clone signature",
-                   "Scam-script scorer", "Out-of-domain", "1/2 correctly called real"):
+                   "Scam-script scorer", "Out-of-domain", "1/2 correctly called real", "2/2 correctly called fake"):
         assert needle in md, needle
     assert (tmp_path / "docs" / "figures" / "eer_heatmap.png").exists()
     assert "skipped" not in md

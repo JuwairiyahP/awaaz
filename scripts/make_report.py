@@ -198,29 +198,16 @@ def section_scam(lines):
                   "The set is small and self-written: a sanity check, not a benchmark.", ""]
 
 
-def section_ood(lines):
-    p = RES / "ood_real.csv"
-    if not p.exists():
-        return
-    with p.open() as f:
+def _ood_table(path: Path, expect: str, th: dict):
+    with path.open() as f:
         rows = list(csv.DictReader(f))
     if not rows:
-        return
+        return None, []
     models = [k for k in rows[0] if k not in ("file", "seconds")]
-    th = {}
-    for k, _ in MODELS:
-        c = load_json(RES / k / "calibration.json")
-        if c:
-            th[k] = c.get("threshold")
 
     def thr(col):
-        for k in th:
-            if col.startswith(k) and "(" in col and col.split("(")[1].rstrip(")") == k:
-                return th[k]
-        for k in th:
-            if col.startswith(k):
-                return th[k]
-        return 0.5
+        name = col.split("(")[0]
+        return th.get(name, 0.5)
 
     table = []
     for r in rows:
@@ -231,11 +218,34 @@ def section_ood(lines):
         table.append(cells)
     summary = []
     for m in models:
-        n_ok = sum(float(r[m]) < thr(m) for r in rows)
-        summary.append(f"{m}: {n_ok}/{len(rows)} correctly called real")
-    lines += ["### Out-of-domain check: real WhatsApp voice notes from outside both datasets", "",
-              md_table(["Clip", "Seconds"] + models, table), "",
-              "; ".join(summary) + ". Recorded on ordinary phones by people not in any training data.", ""]
+        if expect == "real":
+            ok = sum(float(r[m]) < thr(m) for r in rows)
+            summary.append(f"{m.split('(')[0]}: {ok}/{len(rows)} correctly called real")
+        else:
+            ok = sum(float(r[m]) >= thr(m) for r in rows)
+            summary.append(f"{m.split('(')[0]}: {ok}/{len(rows)} correctly called fake")
+    return md_table(["Clip", "Seconds"] + [m.split("(")[0] for m in models], table), summary
+
+
+def section_ood(lines):
+    th = {}
+    for k, _ in MODELS:
+        c = load_json(RES / k / "calibration.json")
+        if c and c.get("threshold") is not None:
+            th[k] = c["threshold"]
+    parts = [("ood_real.csv", "real", "Real WhatsApp voice notes from people outside both datasets"),
+             ("ood_clones.csv", "fake", "XTTS-v2 clones of a team member's voice (scam lines), made from one WhatsApp voice note"),
+             ("ood_clones_neutral.csv", "fake", "XTTS-v2 clones of the same voice saying everyday sentences")]
+    found = [(f, e, d) for f, e, d in parts if (RES / f).exists()]
+    if not found:
+        return
+    lines += ["### Out-of-domain check: voices that are in no training data", "",
+              "Recorded on ordinary phones and shared over WhatsApp. None of these speakers are in Kathbath or "
+              "IndicSynth, and the clones were made from a real voice note, not studio audio.", ""]
+    for fname, expect, desc in found:
+        table, summary = _ood_table(RES / fname, expect, th)
+        if table:
+            lines += [f"**{desc}** (expected: {expect})", "", table, "", "; ".join(summary) + ".", ""]
 
 
 def section_cost(lines):
