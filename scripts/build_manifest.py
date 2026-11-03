@@ -112,31 +112,65 @@ def hold_out_generators(rows, holdout_gen: set[str]):
     return rows + reals
 
 
+def _split_speakers(speakers: list[str], val_frac: float, test_frac: float, rng) -> tuple[set, set]:
+    speakers = sorted(speakers)
+    rng.shuffle(speakers)
+    if not speakers:
+        return set(), set()
+    n_val = max(1, round(len(speakers) * val_frac)) if len(speakers) >= 3 else 0
+    n_test = max(1, round(len(speakers) * test_frac)) if len(speakers) >= 3 else 0
+    return set(speakers[:n_val]), set(speakers[n_val : n_val + n_test])
+
+
 def assign_splits(rows, holdout: set[str], val_frac: float, test_frac: float, seed: int):
+    """Speaker-disjoint ACROSS classes, per language.
+
+    In IndicSynth + Kathbath the cloned target speakers are real Kathbath
+    speakers with the same ids, so a voice in the test split must be unheard in
+    training, both as itself and as a clone. Speakers are pooled by which
+    classes they appear in (both / fake only / real only) and each pool is
+    split separately, so every split keeps real and fake clips.
+    """
     rng = random.Random(seed)
-    groups = defaultdict(list)  # (lang, label) -> rows
+    by_lang = defaultdict(list)
     for r in rows:
         if r["lang"] in holdout:
             r["split"] = "test_unseen"
         else:
-            groups[(r["lang"], r["label"])].append(r)
+            by_lang[r["lang"]].append(r)
 
-    for _, grp in groups.items():
-        speakers = sorted({r["speaker"] for r in grp if r["speaker"]})
-        if len(speakers) >= 10:  # speaker-disjoint split
-            rng.shuffle(speakers)
-            n_val = max(1, int(len(speakers) * val_frac))
-            n_test = max(1, int(len(speakers) * test_frac))
-            val_s = set(speakers[:n_val])
-            test_s = set(speakers[n_val : n_val + n_test])
+    for lang, grp in by_lang.items():
+        labels_of = defaultdict(set)
+        for r in grp:
+            if r["speaker"]:
+                labels_of[r["speaker"]].add(r["label"])
+        if len(labels_of) >= 10:
+            pools = {
+                "both": [s for s, l in labels_of.items() if l == {"real", "fake"}],
+                "fake": [s for s, l in labels_of.items() if l == {"fake"}],
+                "real": [s for s, l in labels_of.items() if l == {"real"}],
+            }
+            val_s, test_s = set(), set()
+            for pool in pools.values():
+                v, t = _split_speakers(pool, val_frac, test_frac, rng)
+                val_s |= v
+                test_s |= t
             for r in grp:
                 s = r["speaker"]
-                r["split"] = "val" if s in val_s else "test" if s in test_s else "train"
-        else:
-            rng.shuffle(grp)
-            n_val, n_test = int(len(grp) * val_frac), int(len(grp) * test_frac)
-            for i, r in enumerate(grp):
-                r["split"] = "val" if i < n_val else "test" if i < n_val + n_test else "train"
+                if not s:  # unknown speaker: random, but never leaks a known voice
+                    x = rng.random()
+                    r["split"] = "val" if x < val_frac else "test" if x < val_frac + test_frac else "train"
+                else:
+                    r["split"] = "val" if s in val_s else "test" if s in test_s else "train"
+            print(f"  {lang}: speakers both={len(pools['both'])} fake-only={len(pools['fake'])} "
+                  f"real-only={len(pools['real'])} -> val {len(val_s)}, test {len(test_s)}")
+        else:  # too few speakers known: per-file split within each class
+            for label in ("real", "fake"):
+                sub = [r for r in grp if r["label"] == label]
+                rng.shuffle(sub)
+                n_val, n_test = int(len(sub) * val_frac), int(len(sub) * test_frac)
+                for i, r in enumerate(sub):
+                    r["split"] = "val" if i < n_val else "test" if i < n_val + n_test else "train"
     return rows
 
 

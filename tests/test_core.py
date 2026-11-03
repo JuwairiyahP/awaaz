@@ -201,11 +201,13 @@ def test_build_manifest_splits(tmp_path):
     assert all(r["split"] == "test_unseen" for r in rows if r["lang"] == "te")
     hi = [r for r in rows if r["lang"] == "hi"]
     assert {r["split"] for r in hi} == {"train", "val", "test"}
-    # speaker-disjoint: no speaker in more than one split
+    # speaker-disjoint ACROSS classes: a voice sits in exactly one split, real or cloned
     by_spk = {}
     for r in hi:
-        by_spk.setdefault((r["label"], r["speaker"]), set()).add(r["split"])
+        by_spk.setdefault(r["speaker"], set()).add(r["split"])
     assert all(len(s) == 1 for s in by_spk.values())
+    for split in ("train", "val", "test"):
+        assert {r["label"] for r in hi if r["split"] == split} == {"real", "fake"}
 
 
 def test_build_manifest_generator_holdout(tmp_path):
