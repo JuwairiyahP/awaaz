@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import io
 import json
 from pathlib import Path
@@ -90,6 +91,11 @@ def fetch(a):
         if ext.lower() not in {".wav", ".flac", ".mp3", ".ogg", ".opus", ".m4a"}:
             ext = ".wav"
         spk = row.get(a.speaker_column) if a.speaker_column else None
+        if spk is not None and a.speaker_regex:
+            m = re.search(a.speaker_regex, str(spk))
+            spk = m.group(1) if m else None
+        if isinstance(spk, float) and spk.is_integer():
+            spk = int(spk)
         sub = out / f"spk_{spk}" if spk not in (None, "") else out
         sub.mkdir(exist_ok=True)
         fname = sub / f"{saved:06d}{ext}"
@@ -121,6 +127,7 @@ def main(argv=None):
     ap.add_argument("--lang-column")
     ap.add_argument("--lang-value")
     ap.add_argument("--speaker-column", help="put clips in spk_<id>/ folders so the manifest splits by speaker")
+    ap.add_argument("--speaker-regex", help=r"pull the id out of the speaker column, e.g. Kathbath fname: '-(\d+)-[mf]\.'")
     ap.add_argument("--shuffle-buffer", type=int, default=0, help="e.g. 2000 to avoid taking only the first speakers")
     ap.add_argument("--seed", type=int, default=13)
     ap.add_argument("--token", default=None, help="HF token for gated datasets (or set HF_TOKEN)")
