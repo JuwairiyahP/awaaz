@@ -23,7 +23,7 @@ import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from awaaz.data import ClipDataset, balanced_sampler_weights, read_manifest  # noqa: E402
+from awaaz.data import ClipDataset, default_cache_dir, balanced_sampler_weights, read_manifest  # noqa: E402
 from awaaz.detector import build_model, count_parameters  # noqa: E402
 from awaaz.metrics import eer  # noqa: E402
 
@@ -57,7 +57,7 @@ def main(argv=None):
     ap.add_argument("--steps-per-epoch", type=int, default=0, help="0 = one pass over train")
     ap.add_argument("--max-val", type=int, default=1500, help="cap validation clips for speed")
     ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--cache-dir", default="/kaggle/working/cache" if Path("/kaggle").exists() else "data/cache")
+    ap.add_argument("--cache-dir", default=default_cache_dir())
     ap.add_argument("--out", default="runs/specresnet")
     ap.add_argument("--seed", type=int, default=13)
     a = ap.parse_args(argv)

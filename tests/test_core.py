@@ -349,3 +349,19 @@ def test_scam_eval_runs_and_is_reasonable():
     rows = run(ROOT / "eval/scam_texts.csv", use_nli=False)
     overall, per_lang, _ = report(rows)
     assert len(rows) == 60 and overall["f1"] >= 0.85
+
+
+def test_cache_survives_truncated_files(tmp_path):
+    from awaaz.data import ClipDataset
+
+    wav = tmp_path / "a.wav"
+    save_wav(wav, tone(5))
+    rows = [{"path": str(wav), "y": 0, "lang": "hi", "label": "real"}]
+    cache = tmp_path / "cache"
+    ds = ClipDataset(rows, train=False, chain="whatsapp_opus16", cache_dir=str(cache))
+    good, _ = ds[0]
+    for f in cache.glob("*.npy"):  # simulate a disk-full half write
+        f.write_bytes(f.read_bytes()[:100])
+    again, _ = ds[0]
+    assert torch.allclose(good, again, atol=1e-3)
+    assert not list(cache.glob(".*.tmp"))

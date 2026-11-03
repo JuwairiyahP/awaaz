@@ -53,7 +53,7 @@ It prints a split table; every row needs both real and fake counts.
 !python scripts/train_detector.py --model xlsr --epochs 6 --batch 24 --lr 1e-3 --workers 4 --out runs/xlsr
 ```
 
-First epoch is slower: it decodes every file into `/kaggle/working/cache`. Later epochs reuse it.
+First epoch is slower: it decodes every file into `/tmp/awaaz_cache` (kept off the 20 GB /kaggle/working disk). Later epochs reuse it.
 If XLS-R runs out of memory, drop `--batch` to 12.
 
 ## 3. Evaluate (the README headline)

@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from awaaz.augment import EVAL_CHAINS  # noqa: E402
-from awaaz.data import ClipDataset, read_manifest  # noqa: E402
+from awaaz.data import ClipDataset, default_cache_dir, read_manifest  # noqa: E402
 from awaaz.inference import load_detector  # noqa: E402
 from awaaz.metrics import auc, eer  # noqa: E402
 
@@ -45,7 +45,7 @@ def main(argv=None):
     ap.add_argument("--max-per-group", type=int, default=600, help="clips per (split, lang, label)")
     ap.add_argument("--batch", type=int, default=48)
     ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--cache-dir", default="/kaggle/working/cache" if Path("/kaggle").exists() else "data/cache")
+    ap.add_argument("--cache-dir", default=default_cache_dir())
     ap.add_argument("--out", default="results/run")
     a = ap.parse_args(argv)
 
