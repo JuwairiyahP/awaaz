@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+data/
+runs/
+results/
+pretrained/
+*.wav
+*.ogg
+*.mp3
+.pytest_cache/

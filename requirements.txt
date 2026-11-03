@@ -1,0 +1,17 @@
+# core (training + inference); ffmpeg must also be installed on the system
+numpy>=1.26
+scipy>=1.11
+soundfile>=0.12
+torch>=2.2
+transformers>=4.40      # XLS-R backbone + zero-shot NLI
+speechbrain>=1.0        # ECAPA-TDNN speaker embeddings
+faster-whisper>=1.0     # transcription + translation
+sentencepiece           # mDeBERTa tokenizer
+# app
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart
+streamlit>=1.33
+python-telegram-bot>=21.0
+# dev
+pytest>=8
