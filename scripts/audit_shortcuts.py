@@ -55,7 +55,13 @@ def signal_stats(path: Path) -> dict:
     rms = np.sqrt((x[: n * frame].reshape(n, frame) ** 2).mean(1) + 1e-12)
     db = 20 * np.log10(rms / rms.max())
     first_voiced = int(np.argmax(db > -40)) * frame / 16000
+    speech_level = np.percentile(db, 90)
     return {
+        # background noise: quietest 10% of frames relative to the speech level
+        # (crowd-recorded phone audio has a room/mic floor; clean TTS often doesn't)
+        "noise_db": float(np.percentile(db, 10) - speech_level),
+        "silent_frac": float(np.mean(db - speech_level < -60)),
+        "zero_frac": float(np.mean(np.abs(x) < 1e-5)),
         "hf4k": float(spec[freqs > 4000].sum() / total),
         "hf6k": float(spec[freqs > 6000].sum() / total),
         "hf7k": float(spec[freqs > 7000].sum() / total),
@@ -88,7 +94,7 @@ def main(argv=None):
             rows[label].append({**probe(f), **signal_stats(f)})
 
     print(f"{'':10s}" + "".join(f"{lab:>22s}" for lab in rows))
-    keys = ["dur", "kbps", "hf4k", "hf6k", "hf7k", "rms_db", "lead_sil"]
+    keys = ["dur", "kbps", "hf4k", "hf6k", "hf7k", "rms_db", "lead_sil", "noise_db", "silent_frac", "zero_frac"]
     for k in keys:
         cells = []
         for lab in rows:
@@ -100,7 +106,8 @@ def main(argv=None):
             f"{str(dict(sorted({v: sum(1 for r in rows[lab] if r[k] == v) for v in {r[k] for r in rows[lab]}}.items(), key=lambda t: -t[1])[:3])):>22s}"
             for lab in rows))
     print("\nmedian (10th-90th percentile). hf6k = share of energy above 6 kHz at 16 kHz.")
-    print("Warning signs: different codecs or sample rates, hf6k/hf7k differing by >2x, rms or lead_sil clearly apart.")
+    print("Warning signs: different codecs or sample rates, hf6k/hf7k differing by >2x, rms or lead_sil clearly apart,")
+    print("noise_db differing by >10 dB or silent_frac/zero_frac much higher in one class (clean-vs-noisy shortcut).")
 
 
 if __name__ == "__main__":
