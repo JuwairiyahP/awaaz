@@ -105,34 +105,6 @@ def test_eval_channel_cache(tmp_path):
     assert torch.allclose(a, b, atol=1e-3)
 
 
-def test_random_rerecord_varies_and_band_limits():
-    from awaaz.augment import random_rerecord
-
-    rng = np.random.default_rng(0)
-    noise = np.random.default_rng(1).standard_normal(4 * SR).astype(np.float32) * 0.1
-    outs = [random_rerecord(noise, rng) for _ in range(4)]
-    assert all(o.shape == noise.shape and np.isfinite(o).all() for o in outs)
-    f = np.fft.rfftfreq(len(noise), 1 / SR)
-    low = [np.sum(np.abs(np.fft.rfft(o))[f < 80] ** 2) / np.sum(np.abs(np.fft.rfft(o)) ** 2) for o in outs]
-    assert max(low) < 0.02  # small-speaker bass loss
-    assert not np.allclose(outs[0], outs[1])  # randomised, not one fixed chain
-
-
-def test_random_channel_uses_rerecord_branch():
-    import awaaz.augment as A
-
-    calls = []
-    orig = A.random_rerecord
-    A.random_rerecord = lambda x, rng: calls.append(1) or orig(x, rng)
-    try:
-        rng = np.random.default_rng(0)
-        for _ in range(40):
-            A.random_channel(tone(1), rng, p_clean=0.0, p_rerecord=0.5)
-    finally:
-        A.random_rerecord = orig
-    assert 8 <= len(calls) <= 32
-
-
 def test_random_channel_shapes():
     rng = np.random.default_rng(0)
     for _ in range(10):
@@ -424,33 +396,26 @@ def test_make_report_from_partial_results(tmp_path, monkeypatch):
     subprocess.run([sys.executable, str(ROOT / "scripts/make_report.py")], check=True, capture_output=True,
                    env={**__import__("os").environ, "AWAAZ_REPORT_ROOT": str(tmp_path)})
     md = (res / "REPORT.md").read_text()
-    for needle in ("Detector equal error rate", "XLS-R (shipped) by language", "Shortcut audit", "Clone signature",
+    for needle in ("Detector equal error rate", "XLS-R (frozen) + attentive head by language", "Shortcut audit", "Clone signature",
                    "Scam-script scorer", "Out-of-domain", "1/2 correctly called real", "2/2 correctly called fake"):
         assert needle in md, needle
     assert (tmp_path / "docs" / "figures" / "eer_heatmap.png").exists()
     assert "skipped" not in md
 
 
-def test_make_report_v1_ships_and_each_ood_column_uses_its_own_threshold(tmp_path):
-    """With v1 and v2 results side by side, the shipped v1 leads the report, and an
-    out-of-domain column 'xlsr(xlsr_v2)' is judged against v2's threshold, not v1's."""
+def test_make_report_judges_each_ood_column_against_its_own_threshold(tmp_path):
+    """score_folder.py names columns 'xlsr(xlsr)', 'specresnet(specresnet)'; each
+    model's column must use that model's calibrated threshold."""
     res = tmp_path / "results"
-    for run, th, eer in (("xlsr", 0.81, 1.05), ("xlsr_v2", 0.09, 0.32)):
+    for run, th in (("xlsr", 0.81), ("specresnet", 0.3)):
         (res / run).mkdir(parents=True)
-        (res / run / "summary.json").write_text(json.dumps({"test/clean": eer}))
+        (res / run / "summary.json").write_text(json.dumps({"test/clean": 1.0}))
         (res / run / "calibration.json").write_text(json.dumps({"threshold": th, "pooled_eer": 0.0}))
-    (res / "xlsr_v2" / "clone_signature").mkdir()
-    (res / "xlsr_v2" / "clone_signature" / "summary_clean.json").write_text(json.dumps({
-        "speakers": 19, "synth_threshold": 0.09, "clones_accepted_by_speaker_match_pct": 12.6,
-        "detector_catches_among_accepted_clones_pct": 100, "red_clone_of_name_on_clones_pct": 12.6,
-        "red_clone_of_name_on_genuine_pct": 0.0}))
-    (res / "ood_real.csv").write_text("file,seconds,xlsr(xlsr),xlsr(xlsr_v2)\nA.ogg,9,0.5,0.5\n")
+    (res / "ood_real.csv").write_text("file,seconds,xlsr(xlsr),specresnet(specresnet)\nA.ogg,9,0.5,0.5\n")
     subprocess.run([sys.executable, str(ROOT / "scripts/make_report.py")], check=True, capture_output=True,
                    env={**__import__("os").environ, "AWAAZ_REPORT_ROOT": str(tmp_path)})
     md = (res / "REPORT.md").read_text(encoding="utf-8")
-    assert md.index("XLS-R (shipped)") < md.index("XLS-R v2") and "Why v2 isn't shipped" in md
-    assert "0.500 ✅ real | 0.500 ⚠️ fake" in md  # 0.5 is under v1's 0.81 but over v2's 0.09
-    assert "| XLS-R v2: + re-record training (experiment) | Clean | 19 |" in md
+    assert "0.500 ✅ real | 0.500 ⚠️ fake" in md  # 0.5 is under XLS-R's 0.81 but over the ResNet's 0.3
 
 
 def test_make_report_updates_readme_between_markers(tmp_path):

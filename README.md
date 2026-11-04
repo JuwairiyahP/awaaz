@@ -23,11 +23,8 @@ _Screenshots of the live app._
   called real, and 4/5 clones of a team member's voice called fake.
 - **Zero false accusations:** the "likely a cloned voice of <name>" warning never fired on the real person.
 - **Shortcut audit passed:** removing dataset artifacts (digital silence, 7–8 kHz band) doesn't change accuracy.
-- **We shipped the model that behaves on real users, not the one with the best benchmark:** a retrain with
-  randomised re-recording (v2) improved every test channel (re-recorded ~18–23% → ~14–17% EER), but its threshold
-  (0.09) left almost no margin for live microphone audio of real voices, so v1 ships. Both are in the results.
-- **Measured limits:** audio played on one phone and re-recorded on another, and a cloning tool never seen in
-  training (~25% EER), are much harder; see [Limitations](#limitations-and-responsible-use).
+- **Measured limits:** audio played on one phone and re-recorded on another (~18–23% EER) and a cloning tool never
+  seen in training (~25% EER) are much harder; see [Limitations](#limitations-and-responsible-use).
 
 ---
 
@@ -103,8 +100,7 @@ phrases that triggered it, with a Hindi headline.
   same ids, so a test voice is never heard in training, neither as itself nor as a clone.
 - 70% of training clips pass through a random simulated channel: WhatsApp Opus, 8 kHz phone line, MP3/AAC, room
   reverb, background noise. The eval channels use fixed settings outside the training ranges, so they test
-  generalisation, not memorisation. An experimental v2 also trains on randomised speaker-to-phone re-recording
-  (`random_rerecord` in `awaaz/augment.py`); see the results for why it isn't shipped.
+  generalisation, not memorisation.
 
 <!-- RESULTS:START -->
 ## Results
@@ -239,7 +235,7 @@ voice. We checked for that explicitly:
 - **Thresholds calibrated on validation data** (`scripts/calibrate.py`) and stored in the checkpoint.
 - **We tested a fancier option and shipped the simpler one** when it did better: zero-shot NLI over-fired on
   everyday messages (scam-script F1 0.93 → 0.83), so the lexicon ships by default.
-- **52 automated tests** cover audio I/O, every channel codec (both code paths), metrics, the speaker-disjoint
+- **50 automated tests** cover audio I/O, every channel codec (both code paths), metrics, the speaker-disjoint
   split, calibration, the clone-signature logic, the API, the bot text and the web demo.
 
 ## Try it
@@ -263,7 +259,7 @@ pytest. Training on Kaggle (2× T4).
 # FFmpeg is required: sudo apt install ffmpeg  (or brew install ffmpeg / choco install ffmpeg)
 git clone https://github.com/JuwairiyahP/awaaz.git && cd awaaz
 pip install -r requirements.txt
-python -m pytest -q tests          # 52 tests, about 20 s, no downloads needed
+python -m pytest -q tests          # 50 tests, about 20 s, no downloads needed
 ```
 
 The trained detector is downloaded from the model repo with `python scripts/hub.py pull --only runs/xlsr/best.pt`
@@ -312,7 +308,7 @@ scripts/      data fetch, manifest, training, calibration, evaluation, shortcut 
               scam eval, out-of-domain scoring, report, Hugging Face Hub sync, run_all.sh
 eval/         labelled scam / normal message set
 deploy/       Hugging Face Space config
-tests/        52 pytest tests
+tests/        50 pytest tests
 ```
 
 ## Limitations and responsible use
@@ -320,9 +316,8 @@ tests/        52 pytest tests
 - **A warning system, not proof.** Red verdicts always tell the user to hang up and call back on a saved number.
   Green says "no warning signs found", never "verified real".
 - **Re-recorded audio is the weakest case (~18–23% EER).** A clip played on one phone's speaker and recorded on
-  another loses much of what the detector relies on. Training on re-recordings (v2) cut this to ~14–17%, but that
-  model's threshold (0.09) left too little margin for live microphone audio; recalibrating it on real
-  recordings is the next step.
+  another loses much of what the detector relies on; this chain isn't in training. Adding simulated
+  re-recordings to training is the next step.
 - **A cloning tool never seen in training is much harder (~25% EER):** a model trained without XTTS-v2 struggled on
   XTTS-v2. The shipped model was trained on both tools, which is why it caught clones of our own voices.
 - **Short clips are less reliable.** The one clone we missed was 3.5 s long (score 0.77 vs. threshold 0.81), and one

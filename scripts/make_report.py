@@ -18,19 +18,15 @@ ROOT = Path(os.environ.get("AWAAZ_REPORT_ROOT", Path(__file__).resolve().parents
 RES = ROOT / "results"
 FIG = ROOT / "docs" / "figures"
 
-MODELS = [("xlsr", "XLS-R (shipped)"), ("xlsr_v2", "XLS-R v2: + re-record training (experiment)"),
-          ("specresnet", "Log-mel ResNet (from scratch)")]
+MODELS = [("xlsr", "XLS-R (frozen) + attentive head"), ("specresnet", "Log-mel ResNet (from scratch)")]
 
 
 def main_run() -> str:
-    """The shipped XLS-R run. v2 (re-record training) beat it on every benchmark channel,
-    but its calibrated threshold (0.09) leaves too little margin on live microphone
-    audio, so v1 ships and v2 is reported alongside it."""
-    return "xlsr" if (RES / "xlsr" / "summary.json").exists() else "xlsr_v2"
+    return "xlsr"
 
 
 def run_of(col: str) -> str:
-    """score_folder.py names columns 'xlsr(xlsr_v2)': model type, then the run folder."""
+    """score_folder.py names columns 'xlsr(xlsr)': model type, then the run folder."""
     return col[col.index("(") + 1: col.rindex(")")] if "(" in col and col.endswith(")") else col
 
 
@@ -87,11 +83,6 @@ def section_headline(lines):
                   md_table(["Model · test set"] + [CHANNEL_NAMES[c] for c in chans], rows), "",
                   "Test speakers were never heard in training, as themselves or as clones. "
                   "Channels are applied to the test clips to simulate how scam audio actually arrives.", ""]
-        if (RES / "xlsr_v2" / "summary.json").exists() and main_run() == "xlsr":
-            lines += ["**Why v2 isn't shipped:** retraining with randomised speaker re-recording improved every channel "
-                      "above, but its validation-calibrated threshold came out at 0.09, against 0.81 for the shipped "
-                      "model. Real out-of-domain voice notes scored up to 0.06 with it, which leaves almost no margin "
-                      "for live microphone audio, so the Space runs the shipped model.", ""]
 
 
 def section_per_language(lines):
@@ -190,9 +181,7 @@ def section_clone_signature(lines):
         hit = [k for k, v in th.items() if v is not None and t is not None and abs(v - t) < 1e-3]
         return LABELS[hit[0]] if hit else (f"threshold {t}" if t is not None else "–")
 
-    dirs = sorted({p.parent for p in RES.glob("**/summary_clean.json") if "clone_signature" in str(p.parent)}
-                  | {p.parent for p in RES.glob("**/summary_whatsapp_opus16.json") if "clone_signature" in str(p.parent)},
-                  key=lambda d: str(d))
+    dirs = [RES / "clone_signature"]
     found = [(d, ch, load_json(d / f"summary_{ch}.json")) for d in dirs for ch in ["clean", "whatsapp_opus16"]]
     found = [(d, ch, s) for d, ch, s in found if s]
     found.sort(key=lambda t: (model_of(t[2]) != LABELS[main_run()], str(t[0]), t[1]))
@@ -236,7 +225,7 @@ def _ood_table(path: Path, expect: str, th: dict):
         rows = list(csv.DictReader(f))
     if not rows:
         return None, []
-    models = [k for k in rows[0] if k not in ("file", "seconds")]
+    models = [k for k in rows[0] if k not in ("file", "seconds") and run_of(k) in LABELS]
 
     def thr(col):
         return th.get(run_of(col), th.get(col.split("(")[0], 0.5))
@@ -271,7 +260,6 @@ def section_ood(lines):
     parts = [("ood_real.csv", "real", "Real WhatsApp voice notes from people outside both datasets"),
              ("ood_clones.csv", "fake", "XTTS-v2 clones of a team member's voice (scam lines), made from one WhatsApp voice note"),
              ("ood_clones_neutral.csv", "fake", "XTTS-v2 clones of the same voice saying everyday sentences")]
-    parts += [(f.replace(".csv", "_v2.csv"), e, d + " (v2)") for f, e, d in parts]
     found = [(f, e, d) for f, e, d in parts if (RES / f).exists()]
     if not found:
         return

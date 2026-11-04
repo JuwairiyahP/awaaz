@@ -221,26 +221,7 @@ def apply_chain(x: np.ndarray, name: str, seed: int = 0) -> np.ndarray:
     return CHAINS[name](x, np.random.default_rng(seed)).astype(np.float32)
 
 
-def random_rerecord(x: np.ndarray, rng: np.random.Generator, sr: int = SAMPLE_RATE) -> np.ndarray:
-    """Randomised speaker-to-microphone re-recording: a small loudspeaker's
-    band-limit and resonance, a room, and background noise."""
-    lo = float(rng.uniform(100, 350))
-    hi = float(rng.uniform(4500, 7600))
-    sos = signal.butter(int(rng.choice([2, 4, 6])), [lo, hi], btype="bandpass", fs=sr, output="sos")
-    y = signal.sosfilt(sos, x).astype(np.float32)
-    if rng.random() < 0.6:  # small-speaker resonance bump
-        f0 = float(rng.uniform(800, 3500))
-        b, a = signal.iirpeak(f0, Q=float(rng.uniform(1.0, 4.0)), fs=sr)
-        y = (y + float(rng.uniform(0.2, 0.8)) * signal.lfilter(b, a, y)).astype(np.float32)
-    if rng.random() < 0.3:  # mild loudspeaker distortion
-        drive = float(rng.uniform(1.5, 4.0))
-        y = (np.tanh(drive * y) / np.tanh(drive)).astype(np.float32)
-    y = reverb(y, rt60=float(rng.uniform(0.15, 0.7)), rng=rng)
-    return add_noise(y, snr_db=float(rng.uniform(10, 30)), rng=rng, color=str(rng.choice(["white", "pink"])))
-
-
-def random_channel(x: np.ndarray, rng: np.random.Generator, p_clean: float = 0.3,
-                   p_rerecord: float = 0.25) -> np.ndarray:
+def random_channel(x: np.ndarray, rng: np.random.Generator, p_clean: float = 0.3) -> np.ndarray:
     """Training augmentation: random codec + optional room + optional noise.
 
     Bitrates and SNRs are sampled from ranges, not the fixed eval values, so
@@ -249,16 +230,10 @@ def random_channel(x: np.ndarray, rng: np.random.Generator, p_clean: float = 0.3
     if rng.random() < p_clean:
         return x
     y = x
-    if rng.random() < p_rerecord:
-        # played on one phone's speaker, recorded on another (v2: this chain was
-        # missing from training and re-recorded EER was ~18-23%). Ranges, not the
-        # fixed eval values, so the eval grid still measures generalisation.
-        y = random_rerecord(y, rng)
-    else:
-        if rng.random() < 0.3:
-            y = reverb(y, rt60=float(rng.uniform(0.15, 0.6)), rng=rng)
-        if rng.random() < 0.4:
-            y = add_noise(y, snr_db=float(rng.uniform(8, 30)), rng=rng, color=str(rng.choice(["white", "pink"])))
+    if rng.random() < 0.3:
+        y = reverb(y, rt60=float(rng.uniform(0.15, 0.6)), rng=rng)
+    if rng.random() < 0.4:
+        y = add_noise(y, snr_db=float(rng.uniform(8, 30)), rng=rng, color=str(rng.choice(["white", "pink"])))
     codec = rng.choice(["opus", "phone", "mp3", "aac", "none"], p=[0.35, 0.2, 0.15, 0.15, 0.15])
     try:
         if codec == "opus":
