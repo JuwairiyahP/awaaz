@@ -10,6 +10,8 @@
 
 **Live demo:** [huggingface.co/spaces/Iyah26/awaaz](https://huggingface.co/spaces/Iyah26/awaaz) · **Demo video:** [YouTube](https://www.youtube.com/watch?v=m__oPgqRXBM) · **Model weights:** [Iyah26/awaaz-models](https://huggingface.co/Iyah26/awaaz-models)
 
+**Please note initial audio processing might take ~10 seconds more than estimated time**
+
 | A cloned voice asking for money | A real Tamil voice note |
 |---|---|
 | ![Awaaz flags a cloned voice making a scam request](docs/figures/app_clone.png) | ![Awaaz finds no warning signs in a real voice note](docs/figures/app_real.png) |
