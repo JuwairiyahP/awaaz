@@ -8,7 +8,7 @@
 > whether the voice is synthetic, whether it sounds like someone you know, and whether the message follows a scam
 > script, in Indian languages, on compressed WhatsApp and phone audio.
 
-**Live demo:** [huggingface.co/spaces/Iyah26/awaaz](https://huggingface.co/spaces/Iyah26/awaaz) · **Demo video:** _link_ · **Model weights:** [Iyah26/awaaz-models](https://huggingface.co/Iyah26/awaaz-models)
+**Live demo:** [huggingface.co/spaces/Iyah26/awaaz](https://huggingface.co/spaces/Iyah26/awaaz) · **Demo video:** [YouTube](https://www.youtube.com/watch?v=m__oPgqRXBM) · **Model weights:** [Iyah26/awaaz-models](https://huggingface.co/Iyah26/awaaz-models)
 
 | A cloned voice asking for money | A real Tamil voice note |
 |---|---|
