@@ -38,23 +38,35 @@ RESULTS_DIR = Path(os.environ.get("AWAAZ_RESULTS", ROOT / "results"))
 COLORS = {"red": "#C62828", "amber": "#E08E0B", "green": "#2E7D32"}
 CUE_LABELS = {"urgency": "Urgency", "secrecy": "Secrecy", "money": "Money / UPI", "otp": "OTP / PIN", "authority": "Police / authority"}
 
-_cpu_score = inference.score_windows
-
-
-@GPU
-def _gpu_score(model, windows, batch=16):
-    import torch
-
-    if torch.cuda.is_available():
-        model.to("cuda")
-    return _cpu_score(model, windows, batch)
-
-
-inference.score_windows = _gpu_score  # the pipeline looks this up at call time
+# keep a handle on the original scorer, once, so re-importing this module
+# never wraps the wrapper (which would recurse forever)
+_cpu_score = getattr(inference, "_original_score_windows", inference.score_windows)
+inference._original_score_windows = _cpu_score
 
 
 def _aw():
     return get_awaaz()
+
+
+@GPU
+def _gpu_score_windows(windows, batch=16):
+    """Runs in ZeroGPU's GPU worker. ZeroGPU pickles a function's arguments and
+    return value to move them between processes, and the XLS-R module (it uses
+    weight-norm parametrizations) can't be pickled. So only plain arrays cross
+    the boundary; the model is the global one loaded at startup."""
+    import torch
+
+    model = _aw().detector
+    if torch.cuda.is_available():
+        model.to("cuda")
+    return np.asarray(_cpu_score(model, np.ascontiguousarray(windows, dtype=np.float32), batch))
+
+
+def _score_windows(model, windows, batch=16):  # same signature the pipeline calls
+    return _gpu_score_windows(windows, batch)
+
+
+inference.score_windows = _score_windows  # the pipeline looks this up at call time
 
 
 # ------------------------------------------------------------------ rendering
@@ -130,7 +142,9 @@ def analyze(audio_path, people):
     try:
         r = aw.analyze(audio_path).to_dict()
     except RuntimeError as e:
-        raise gr.Error(f"Couldn't read that audio: {e}")
+        if "could not decode" in str(e):
+            raise gr.Error("Couldn't read that audio file. Try a WhatsApp voice note, .ogg, .mp3, .m4a or .wav.")
+        raise gr.Error(f"Analysis failed: {type(e).__name__}: {e}")
     return verdict_html(r["verdict"]), timeline_plot(r, aw.th.synthetic), details_html(r), r
 
 
@@ -187,6 +201,10 @@ almost double the global average. Scammers clone a relative's voice from a few s
 **Limits:** a warning tool, not proof. New cloning tools can evade detectors. Always verify by calling back on a saved number.
 Enrolled voices stay in your browser session only; uploaded audio is deleted after analysis.
 """
+
+# load every model at startup, before ZeroGPU starts its worker processes,
+# so the first visitor doesn't wait and the GPU function finds them in memory
+_aw()
 
 with gr.Blocks(title="Awaaz — voice-clone scam check") as demo:
     people = gr.State({})
