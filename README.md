@@ -239,7 +239,7 @@ voice. We checked for that explicitly:
 - **Thresholds calibrated on validation data** (`scripts/calibrate.py`) and stored in the checkpoint.
 - **We tested a fancier option and shipped the simpler one** when it did better: zero-shot NLI over-fired on
   everyday messages (scam-script F1 0.93 → 0.83), so the lexicon ships by default.
-- **51 automated tests** cover audio I/O, every channel codec (both code paths), metrics, the speaker-disjoint
+- **52 automated tests** cover audio I/O, every channel codec (both code paths), metrics, the speaker-disjoint
   split, calibration, the clone-signature logic, the API, the bot text and the web demo.
 
 ## Try it
@@ -263,7 +263,7 @@ pytest. Training on Kaggle (2× T4).
 # FFmpeg is required: sudo apt install ffmpeg  (or brew install ffmpeg / choco install ffmpeg)
 git clone https://github.com/JuwairiyahP/awaaz.git && cd awaaz
 pip install -r requirements.txt
-python -m pytest -q tests          # 51 tests, about 20 s, no downloads needed
+python -m pytest -q tests          # 52 tests, about 20 s, no downloads needed
 ```
 
 The trained detector is downloaded from the model repo with `python scripts/hub.py pull --only runs/xlsr/best.pt`
@@ -312,7 +312,7 @@ scripts/      data fetch, manifest, training, calibration, evaluation, shortcut 
               scam eval, out-of-domain scoring, report, Hugging Face Hub sync, run_all.sh
 eval/         labelled scam / normal message set
 deploy/       Hugging Face Space config
-tests/        51 pytest tests
+tests/        52 pytest tests
 ```
 
 ## Limitations and responsible use

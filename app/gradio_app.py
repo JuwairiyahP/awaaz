@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +26,7 @@ import numpy as np  # noqa: E402
 try:  # Hugging Face ZeroGPU; a no-op decorator anywhere else
     import spaces
 
-    GPU = spaces.GPU(duration=20)
+    GPU = spaces.GPU(duration=10)  # a check needs ~1-2 s; a small reservation stretches visitors' quota
 except Exception:  # pragma: no cover
     def GPU(fn):
         return fn
@@ -62,8 +63,23 @@ def _gpu_score_windows(windows, batch=16):
     return np.asarray(_cpu_score(model, np.ascontiguousarray(windows, dtype=np.float32), batch))
 
 
+_ran = threading.local()  # which device the last check used, per request thread
+
+
 def _score_windows(model, windows, batch=16):  # same signature the pipeline calls
-    return _gpu_score_windows(windows, batch)
+    """GPU first; if ZeroGPU refuses (visitor's daily quota used up, no GPU free,
+    timeout), score on the CPU copy of the same model instead of failing."""
+    try:
+        out = _gpu_score_windows(windows, batch)
+        _ran.device = "gpu"
+        return out
+    except Exception as e:  # ZeroGPU raises gr.Error for quota / queue problems
+        print(f"[awaaz] GPU unavailable ({type(e).__name__}: {str(e)[:120]}); scoring on CPU", flush=True)
+        _ran.device = "cpu"
+        import torch
+
+        with torch.inference_mode():
+            return np.asarray(_cpu_score(_aw().detector.to("cpu"), np.ascontiguousarray(windows, dtype=np.float32), batch))
 
 
 inference.score_windows = _score_windows  # the pipeline looks this up at call time
@@ -139,13 +155,18 @@ def analyze(audio_path, people):
         raise gr.Error("Upload or record a voice note first.")
     aw = _aw()
     aw.vault = VoiceVault(None, people or {})
+    _ran.device = None
     try:
         r = aw.analyze(audio_path).to_dict()
     except RuntimeError as e:
         if "could not decode" in str(e):
             raise gr.Error("Couldn't read that audio file. Try a WhatsApp voice note, .ogg, .mp3, .m4a or .wav.")
         raise gr.Error(f"Analysis failed: {type(e).__name__}: {e}")
-    return verdict_html(r["verdict"]), timeline_plot(r, aw.th.synthetic), details_html(r), r
+    det = details_html(r)
+    if getattr(_ran, "device", None) == "cpu":
+        det += ("<div style='font-size:.85rem;opacity:.65;margin-top:8px'>Ran on CPU (GPU busy or daily GPU quota "
+                "used up), so this one was slower. Same model, same result.</div>")
+    return verdict_html(r["verdict"]), timeline_plot(r, aw.th.synthetic), det, r
 
 
 def enroll(name, audio_path, people):

@@ -160,3 +160,31 @@ def test_gradio_zerogpu_never_pickles_the_model(client, tmp_path, monkeypatch):
         bad = tmp_path / "bad.wav"
         bad.write_bytes(b"not audio")
         G.analyze(str(bad), {})
+
+
+def test_gradio_falls_back_to_cpu_when_zerogpu_refuses(client, tmp_path, monkeypatch):
+    """A visitor who used up their ZeroGPU quota still gets a verdict (on CPU),
+    with a note saying why it was slower."""
+    pytest.importorskip("gradio")
+    import importlib
+    import types
+
+    def quota_gpu(duration=None):
+        def deco(fn):
+            def wrapper(*args, **kwargs):
+                import gradio as gr
+
+                raise gr.Error("You have exceeded your free GPU quota")
+            return wrapper
+        return deco
+
+    monkeypatch.setitem(sys.modules, "spaces", types.SimpleNamespace(GPU=quota_gpu))
+    import app.gradio_app as G
+
+    G = importlib.reload(G)
+    t = np.arange(16000 * 6) / 16000
+    wav = tmp_path / "q.wav"
+    save_wav(wav, (0.3 * np.sin(2 * np.pi * 300 * t)).astype(np.float32))
+    _, _, details, raw = G.analyze(str(wav), {})
+    assert raw["verdict"]["level"] in {"red", "amber", "green"} and len(raw["window_scores"]) >= 2
+    assert "Ran on CPU" in details
