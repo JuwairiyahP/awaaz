@@ -1,0 +1,6 @@
+{
+  "test/clean": 1.14,
+  "test/dither": 0.99,
+  "test/lowpass7k": 0.68,
+  "test/sanitized": 0.84
+}

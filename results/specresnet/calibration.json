@@ -1,0 +1,27 @@
+{
+  "split": "val",
+  "n_clips": 800,
+  "chains": {
+    "clean": {
+      "eer": 0.67,
+      "threshold": 0.3637
+    },
+    "whatsapp_opus16": {
+      "eer": 3.74,
+      "threshold": 0.6793
+    }
+  },
+  "pooled_eer": 2.05,
+  "threshold": 0.6295,
+  "threshold_fpr5": 0.1855,
+  "at_threshold": {
+    "accuracy": 0.9794,
+    "precision": 0.9879,
+    "recall": 0.9791,
+    "f1": 0.9835,
+    "tp": 983,
+    "fp": 12,
+    "fn": 21,
+    "tn": 584
+  }
+}

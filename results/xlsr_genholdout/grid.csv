@@ -1,0 +1,17 @@
+split,lang,channel,n,eer,auc
+test,hi,clean,402,0.0,1.0
+test,kn,clean,173,0.0,1.0
+test,mr,clean,409,0.0,1.0
+test,ta,clean,424,0.0,1.0
+test_unseen_gen,bn,clean,391,3.32,0.9907
+test_unseen_gen,hi,clean,524,29.0,0.7924
+test_unseen_gen,kn,clean,374,26.0,0.828
+test_unseen_gen,ta,clean,600,31.0,0.7801
+test,hi,whatsapp_opus16,402,0.0,1.0
+test,kn,whatsapp_opus16,173,0.0,1.0
+test,mr,whatsapp_opus16,409,0.0,1.0
+test,ta,whatsapp_opus16,424,0.0,1.0
+test_unseen_gen,bn,whatsapp_opus16,391,4.4,0.9846
+test_unseen_gen,hi,whatsapp_opus16,524,26.33,0.8293
+test_unseen_gen,kn,whatsapp_opus16,374,24.33,0.8218
+test_unseen_gen,ta,whatsapp_opus16,600,32.5,0.7476

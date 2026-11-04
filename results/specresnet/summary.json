@@ -1,0 +1,14 @@
+{
+  "test/clean": 4.95,
+  "test_unseen/clean": 5.92,
+  "test/whatsapp_opus16": 7.06,
+  "test_unseen/whatsapp_opus16": 8.5,
+  "test/phone_8k": 13.14,
+  "test_unseen/phone_8k": 7.83,
+  "test/mp3_64": 5.52,
+  "test_unseen/mp3_64": 6.0,
+  "test/rerecorded": 18.29,
+  "test_unseen/rerecorded": 26.17,
+  "test/rerecorded_whatsapp": 18.52,
+  "test_unseen/rerecorded_whatsapp": 24.83
+}

@@ -1,0 +1,38 @@
+{
+  "n": {
+    "genuine": 91,
+    "clone": 95,
+    "impostor": 260
+  },
+  "speakers": 19,
+  "speaker_eer_pct": 7.69,
+  "speaker_threshold": 0.4652,
+  "similarity_median": {
+    "genuine": 0.694,
+    "clone": 0.339,
+    "impostor": 0.261
+  },
+  "clones_accepted_by_speaker_match_pct": 13.7,
+  "impostors_accepted_pct": 7.3,
+  "synth_threshold": 0.8105,
+  "detector_flags_clone_pct": 98.9,
+  "detector_flags_genuine_pct": 0.0,
+  "red_clone_of_name_on_clones_pct": 12.6,
+  "red_clone_of_name_on_genuine_pct": 0.0,
+  "detector_catches_among_accepted_clones_pct": 92.3,
+  "by_generator": {
+    "freevc24": {
+      "n": 81,
+      "accepted_by_speaker_match_pct": 4.9,
+      "detector_flags_pct": 100.0
+    },
+    "xtts_v2": {
+      "n": 14,
+      "accepted_by_speaker_match_pct": 64.3,
+      "detector_flags_pct": 92.9
+    }
+  },
+  "split": "test",
+  "chain": "whatsapp_opus16",
+  "ckpt": "runs/xlsr/best.pt"
+}
