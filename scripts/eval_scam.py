@@ -53,6 +53,10 @@ def report(rows):
 
 
 def main(argv=None):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(ROOT / "eval/scam_texts.csv"))
     ap.add_argument("--nli", action="store_true")
@@ -68,7 +72,7 @@ def main(argv=None):
                "errors": errors}
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    (out / f"summary_{summary['mode']}.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False))
+    (out / f"summary_{summary['mode']}.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     o = summary["overall"]
     print(f"{summary['mode']}: precision {o['precision']:.2f}  recall {o['recall']:.2f}  F1 {o['f1']:.2f}  "
           f"(tp {o['tp']} fp {o['fp']} fn {o['fn']} tn {o['tn']})")

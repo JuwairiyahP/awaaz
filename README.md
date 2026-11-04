@@ -2,15 +2,32 @@
 
 **Neural Storm 2026 · Track 1: Future Tech · Problem statement FT-02: Deepfake & Synthetic Media Detection**
 
-**Team:** _TEAM NAME_ · _Member names_
+**Team Awaaz:** Juwairiyah · Samay
 
 > **Is this really your brother, or an AI clone of him?** Forward a suspicious voice note to Awaaz. It checks
 > whether the voice is synthetic, whether it sounds like someone you know, and whether the message follows a scam
 > script, in Indian languages, on compressed WhatsApp and phone audio.
 
-**Live demo:** _Hugging Face Space link_ · **Demo video:** _link_ · **Model weights:** _Hugging Face model repo link_
+**Live demo:** [huggingface.co/spaces/Iyah26/awaaz](https://huggingface.co/spaces/Iyah26/awaaz) · **Demo video:** _link_ · **Model weights:** [Iyah26/awaaz-models](https://huggingface.co/Iyah26/awaaz-models)
 
-_Screenshot / demo GIF here_
+| A cloned voice asking for money | A real Tamil voice note |
+|---|---|
+| ![Awaaz flags a cloned voice making a scam request](docs/figures/app_clone.png) | ![Awaaz finds no warning signs in a real voice note](docs/figures/app_real.png) |
+
+_Screenshots of the live app._
+
+**At a glance**
+- **About 1% equal error rate** on clean, WhatsApp and MP3 audio (2.3% over an 8 kHz phone line), on speakers never heard
+  in training, including **two Indian languages never seen in training** (Telugu, Malayalam: 0.67% clean).
+- **13 of 14 correct on voices outside all training data:** 9/9 real WhatsApp voice notes from friends and family
+  called real, and 4/5 clones of a team member's voice called fake.
+- **Zero false accusations:** the "likely a cloned voice of <name>" warning never fired on the real person.
+- **Shortcut audit passed:** removing dataset artifacts (digital silence, 7–8 kHz band) doesn't change accuracy.
+- **We shipped the model that behaves on real users, not the one with the best benchmark:** a retrain with
+  randomised re-recording (v2) improved every test channel (re-recorded ~18–23% → ~14–17% EER), but its threshold
+  (0.09) left almost no margin for live microphone audio of real voices, so v1 ships. Both are in the results.
+- **Measured limits:** audio played on one phone and re-recorded on another, and a cloning tool never seen in
+  training (~25% EER), are much harder; see [Limitations](#limitations-and-responsible-use).
 
 ---
 
@@ -33,14 +50,19 @@ and fact-checkers have struggled to verify audio before it spreads
 - They answer only "AI or human?", mostly for English and clean audio, or for professional fact-checkers.
 - Detectors trained on English data perform poorly on Indian languages, as the IndicSynth paper showed
   ([ACL 2025](https://hyper.ai/en/papers/acl__2025__2025.acl-long.1070)).
-- **Clones fool speaker verification** (the same paper), so "it sounds like Mum" proves nothing.
+- **Clones can fool speaker verification** (the same paper), so "it sounds like Mum" isn't proof.
 - Compression (WhatsApp, phone lines) strips the artifacts detectors rely on
   ([Li et al., 2025](https://arxiv.org/abs/2503.17577v1)).
 
 ## What Awaaz does differently
 
-Awaaz turns the weakness into a signal. If clones fool speaker matching, then **a voice that matches someone you
-know *and* sounds synthetic is the fingerprint of a targeted clone attack.** It runs three independent checks:
+Most detectors stop at "AI or human?". Awaaz also answers **"who is this pretending to be?"** The synthetic-voice
+detector catches clones on its own; matching the voice against family members the user enrolled turns that into a
+specific, actionable warning: **"likely a cloned voice of Mum, call her back on her saved number."** In testing on 19
+unseen speakers, that warning **never fired on the real person**. (Measured with ECAPA, about 13% of clones passed
+speaker matching on their own, and the detector caught 92% of those; see the clone-signature results.)
+A third, independent check reads the message itself, so a scam is flagged even when compression has erased the
+acoustic evidence or a human scammer is speaking. It runs three independent checks:
 
 | Check | How | Question it answers |
 |---|---|---|
@@ -75,12 +97,14 @@ Every verdict explains itself: a per-window "how synthetic" timeline, the matche
 phrases that triggered it, with a Hindi headline.
 
 **Built for Indian audio:**
-- Trained on **IndicSynth** clones (FreeVC24 voice conversion and XTTS-v2 TTS) vs **Kathbath** real speech, across
+- Trained on **IndicSynth** clones (mostly FreeVC24 voice conversion and XTTS-v2 TTS) vs **Kathbath** real speech, across
   5 training languages (Hindi, Kannada, Tamil, Bengali, Marathi); Telugu and Malayalam are held out entirely.
 - Train/test split is **speaker-disjoint across both classes**: IndicSynth clones real Kathbath speakers with the
   same ids, so a test voice is never heard in training, neither as itself nor as a clone.
-- Every training clip passes through simulated channels: WhatsApp Opus, 8 kHz phone line, MP3/AAC, room reverb,
-  speaker re-recording, background noise.
+- 70% of training clips pass through a random simulated channel: WhatsApp Opus, 8 kHz phone line, MP3/AAC, room
+  reverb, background noise. The eval channels use fixed settings outside the training ranges, so they test
+  generalisation, not memorisation. An experimental v2 also trains on randomised speaker-to-phone re-recording
+  (`random_rerecord` in `awaaz/augment.py`); see the results for why it isn't shipped.
 
 <!-- RESULTS:START -->
 ## Results
@@ -215,7 +239,7 @@ voice. We checked for that explicitly:
 - **Thresholds calibrated on validation data** (`scripts/calibrate.py`) and stored in the checkpoint.
 - **We tested a fancier option and shipped the simpler one** when it did better: zero-shot NLI over-fired on
   everyday messages (scam-script F1 0.93 → 0.83), so the lexicon ships by default.
-- **47 automated tests** cover audio I/O, every channel codec (both code paths), metrics, the speaker-disjoint
+- **51 automated tests** cover audio I/O, every channel codec (both code paths), metrics, the speaker-disjoint
   split, calibration, the clone-signature logic, the API, the bot text and the web demo.
 
 ## Try it
@@ -239,7 +263,7 @@ pytest. Training on Kaggle (2× T4).
 # FFmpeg is required: sudo apt install ffmpeg  (or brew install ffmpeg / choco install ffmpeg)
 git clone https://github.com/JuwairiyahP/awaaz.git && cd awaaz
 pip install -r requirements.txt
-python -m pytest -q tests          # 47 tests, about 20 s, no downloads needed
+python -m pytest -q tests          # 51 tests, about 20 s, no downloads needed
 ```
 
 The trained detector is downloaded from the model repo with `python scripts/hub.py pull --only runs/xlsr/best.pt`
@@ -288,13 +312,25 @@ scripts/      data fetch, manifest, training, calibration, evaluation, shortcut 
               scam eval, out-of-domain scoring, report, Hugging Face Hub sync, run_all.sh
 eval/         labelled scam / normal message set
 deploy/       Hugging Face Space config
-tests/        47 pytest tests
+tests/        51 pytest tests
 ```
 
 ## Limitations and responsible use
 
 - **A warning system, not proof.** Red verdicts always tell the user to hang up and call back on a saved number.
   Green says "no warning signs found", never "verified real".
+- **Re-recorded audio is the weakest case (~18–23% EER).** A clip played on one phone's speaker and recorded on
+  another loses much of what the detector relies on. Training on re-recordings (v2) cut this to ~14–17%, but that
+  model's threshold (0.09) left too little margin for live microphone audio; recalibrating it on real
+  recordings is the next step.
+- **A cloning tool never seen in training is much harder (~25% EER):** a model trained without XTTS-v2 struggled on
+  XTTS-v2. The shipped model was trained on both tools, which is why it caught clones of our own voices.
+- **Short clips are less reliable.** The one clone we missed was 3.5 s long (score 0.77 vs. threshold 0.81), and one
+  real English voice note scored 0.75, close to the threshold. Longer voice notes give more evidence.
+- **The scam-script check reads words, not intent.** Someone saying "send money urgently" as a joke gets an amber
+  "sounds human, but follows a scam script" verdict. That's deliberate: it also catches a human scammer.
+- **Speaker matching alone doesn't catch most clones** (~13% passed it in our test); it makes warnings specific
+  rather than doing the detecting.
 - **New cloning tools may evade the detector.** We measure this (unseen-tool result), and the scam-script check
   is a second line of defence that doesn't depend on acoustics.
 - **Training data covers two cloning tools and seven languages.** Accents, recording conditions and tools
@@ -318,4 +354,5 @@ Because IndicSynth is non-commercial, the trained detector is for research and d
 ## AI development tools used
 
 Claude (Anthropic) was used as a coding and research assistant: drafting the proposal, scaffolding code, writing
-tests and debugging. _List any other tools used._
+tests and debugging, and to produce the demo video. The video's voice-over is synthetic, generated with
+**Kokoro** (open-weight TTS); no real person's voice was cloned for it.

@@ -424,11 +424,33 @@ def test_make_report_from_partial_results(tmp_path, monkeypatch):
     subprocess.run([sys.executable, str(ROOT / "scripts/make_report.py")], check=True, capture_output=True,
                    env={**__import__("os").environ, "AWAAZ_REPORT_ROOT": str(tmp_path)})
     md = (res / "REPORT.md").read_text()
-    for needle in ("Detector equal error rate", "XLS-R by language", "Shortcut audit", "Clone signature",
+    for needle in ("Detector equal error rate", "XLS-R (shipped) by language", "Shortcut audit", "Clone signature",
                    "Scam-script scorer", "Out-of-domain", "1/2 correctly called real", "2/2 correctly called fake"):
         assert needle in md, needle
     assert (tmp_path / "docs" / "figures" / "eer_heatmap.png").exists()
     assert "skipped" not in md
+
+
+def test_make_report_v1_ships_and_each_ood_column_uses_its_own_threshold(tmp_path):
+    """With v1 and v2 results side by side, the shipped v1 leads the report, and an
+    out-of-domain column 'xlsr(xlsr_v2)' is judged against v2's threshold, not v1's."""
+    res = tmp_path / "results"
+    for run, th, eer in (("xlsr", 0.81, 1.05), ("xlsr_v2", 0.09, 0.32)):
+        (res / run).mkdir(parents=True)
+        (res / run / "summary.json").write_text(json.dumps({"test/clean": eer}))
+        (res / run / "calibration.json").write_text(json.dumps({"threshold": th, "pooled_eer": 0.0}))
+    (res / "xlsr_v2" / "clone_signature").mkdir()
+    (res / "xlsr_v2" / "clone_signature" / "summary_clean.json").write_text(json.dumps({
+        "speakers": 19, "synth_threshold": 0.09, "clones_accepted_by_speaker_match_pct": 12.6,
+        "detector_catches_among_accepted_clones_pct": 100, "red_clone_of_name_on_clones_pct": 12.6,
+        "red_clone_of_name_on_genuine_pct": 0.0}))
+    (res / "ood_real.csv").write_text("file,seconds,xlsr(xlsr),xlsr(xlsr_v2)\nA.ogg,9,0.5,0.5\n")
+    subprocess.run([sys.executable, str(ROOT / "scripts/make_report.py")], check=True, capture_output=True,
+                   env={**__import__("os").environ, "AWAAZ_REPORT_ROOT": str(tmp_path)})
+    md = (res / "REPORT.md").read_text(encoding="utf-8")
+    assert md.index("XLS-R (shipped)") < md.index("XLS-R v2") and "Why v2 isn't shipped" in md
+    assert "0.500 ✅ real | 0.500 ⚠️ fake" in md  # 0.5 is under v1's 0.81 but over v2's 0.09
+    assert "| XLS-R v2: + re-record training (experiment) | Clean | 19 |" in md
 
 
 def test_make_report_updates_readme_between_markers(tmp_path):
